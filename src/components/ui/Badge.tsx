@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { cn } from "@/lib/utils";
 
-type BadgeVariant = "primary" | "success" | "warning" | "danger" | "notice" | "default";
+type BadgeVariant = "primary" | "secondary" | "success" | "warning" | "danger" | "notice" | "default";
 
 interface BadgeProps {
   variant?: BadgeVariant;
@@ -11,6 +11,7 @@ interface BadgeProps {
 
 const variantStyles: Record<BadgeVariant, string> = {
   primary: "bg-accent-primary/15 text-accent-primary border-accent-primary/30",
+  secondary: "bg-bg-tertiary text-text-primary border-border-color",
   success: "bg-accent-success/15 text-accent-success border-accent-success/30",
   warning: "bg-accent-warning/15 text-accent-warning border-accent-warning/30",
   danger: "bg-accent-danger/15 text-accent-danger border-accent-danger/30",
@@ -18,7 +19,7 @@ const variantStyles: Record<BadgeVariant, string> = {
   default: "bg-bg-tertiary text-text-secondary border-border-color",
 };
 
-export default function Badge({ variant = "default", className, children }: BadgeProps) {
+export function Badge({ variant = "default", className, children }: BadgeProps) {
   return (
     <span
       className={cn(

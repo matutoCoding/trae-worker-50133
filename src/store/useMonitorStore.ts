@@ -3,21 +3,26 @@ import type {
   MonitoringPoint,
   RadiationReading,
   Alert,
+  AlertLevel,
+  AlertStatus,
   CalibrationRecord,
+  BackgroundValue,
+  QualityControlReport,
   PersonnelDose,
   EmergencyRecord,
   MonitorReport,
   PointStatus,
-  AlertLevel,
-  AlertStatus,
-} from '../types';
-import { mockPoints } from '../data/mockPoints';
-import { mockCurrentReadings, mockHistoryReadings } from '../data/mockReadings';
-import { mockAlerts } from '../data/mockAlerts';
-import { mockCalibrations } from '../data/mockCalibrations';
-import { mockPersonnel } from '../data/mockPersonnel';
-import { mockEmergencyRecords } from '../data/mockEmergency';
-import { mockReports } from '../data/mockReports';
+  StepStatus,
+} from '@/types';
+import { mockPoints } from '@/data/mockPoints';
+import { mockCurrentReadings, mockHistoryReadings } from '@/data/mockReadings';
+import { mockAlerts } from '@/data/mockAlerts';
+import { mockCalibrations } from '@/data/mockCalibrations';
+import { mockPersonnel } from '@/data/mockPersonnel';
+import { mockEmergencyRecords } from '@/data/mockEmergency';
+import { mockReports } from '@/data/mockReports';
+import { mockBackgroundValues } from '@/data/mockBackgroundValues';
+import { mockQualityControlReports } from '@/data/mockQualityControl';
 
 interface MonitorState {
   monitoringPoints: MonitoringPoint[];
@@ -25,48 +30,20 @@ interface MonitorState {
   historyReadings: RadiationReading[];
   alerts: Alert[];
   calibrationRecords: CalibrationRecord[];
+  backgroundValues: BackgroundValue[];
+  qualityControlReports: QualityControlReport[];
   personnelDoses: PersonnelDose[];
   emergencyRecords: EmergencyRecord[];
   reports: MonitorReport[];
-
   selectedPointId: string | null;
-  alertFilters: {
-    level?: AlertLevel;
-    status?: AlertStatus;
-  };
-  pointStatusFilter?: PointStatus;
 
   setSelectedPointId: (id: string | null) => void;
-  setAlertFilters: (filters: { level?: AlertLevel; status?: AlertStatus }) => void;
-  setPointStatusFilter: (status?: PointStatus) => void;
 
-  updateMonitoringPoint: (point: MonitoringPoint) => void;
-  addMonitoringPoint: (point: MonitoringPoint) => void;
-  removeMonitoringPoint: (id: string) => void;
-
-  updateCurrentReading: (reading: RadiationReading) => void;
-  addHistoryReading: (reading: RadiationReading) => void;
-  getHistoryReadingsByPointId: (pointId: string) => RadiationReading[];
-
-  addAlert: (alert: Alert) => void;
-  updateAlert: (alert: Alert) => void;
-  updateAlertStatus: (id: string, status: AlertStatus, handler?: string, resolution?: string) => void;
-  getFilteredAlerts: () => Alert[];
-
-  addCalibrationRecord: (record: CalibrationRecord) => void;
-  getCalibrationRecordsByPointId: (pointId: string) => CalibrationRecord[];
-
-  addPersonnelDose: (dose: PersonnelDose) => void;
-  updatePersonnelDose: (dose: PersonnelDose) => void;
-
-  addEmergencyRecord: (record: EmergencyRecord) => void;
-  updateEmergencyRecord: (record: EmergencyRecord) => void;
-
-  addReport: (report: MonitorReport) => void;
-
-  getFilteredPoints: () => MonitoringPoint[];
   getPointById: (id: string) => MonitoringPoint | undefined;
   getCurrentReadingByPointId: (pointId: string) => RadiationReading | undefined;
+  getHistoryReadingsByPointId: (pointId: string) => RadiationReading[];
+
+  getFilteredAlerts: (filters?: { level?: AlertLevel; status?: AlertStatus }) => Alert[];
   getStatistics: () => {
     totalPoints: number;
     onlinePoints: number;
@@ -75,8 +52,18 @@ interface MonitorState {
     faultPoints: number;
     pendingAlerts: number;
     processingAlerts: number;
-    averageDoseRate: number;
+    avgDoseRate: number;
   };
+
+  updateAlertStatus: (id: string, status: AlertStatus, handler?: string, resolution?: string) => void;
+  updateBackgroundValue: (id: string, value: number, operator: string) => void;
+  addReport: (report: MonitorReport) => void;
+  updateEmergencyStep: (recordId: string, stepId: string, status: StepStatus, operator?: string) => void;
+
+  getCalibrationRecordsByPointId: (pointId: string) => CalibrationRecord[];
+
+  getBackgroundValueByPointId: (pointId: string) => BackgroundValue | undefined;
+  getFilteredPoints: (status?: PointStatus) => MonitoringPoint[];
 }
 
 export const useMonitorStore = create<MonitorState>((set, get) => ({
@@ -85,63 +72,62 @@ export const useMonitorStore = create<MonitorState>((set, get) => ({
   historyReadings: mockHistoryReadings,
   alerts: mockAlerts,
   calibrationRecords: mockCalibrations,
+  backgroundValues: mockBackgroundValues,
+  qualityControlReports: mockQualityControlReports,
   personnelDoses: mockPersonnel,
   emergencyRecords: mockEmergencyRecords,
   reports: mockReports,
-
   selectedPointId: null,
-  alertFilters: {},
-  pointStatusFilter: undefined,
 
   setSelectedPointId: (id) => set({ selectedPointId: id }),
 
-  setAlertFilters: (filters) => set({ alertFilters: filters }),
+  getPointById: (id) => get().monitoringPoints.find((p) => p.id === id),
 
-  setPointStatusFilter: (status) => set({ pointStatusFilter: status }),
-
-  updateMonitoringPoint: (point) =>
-    set((state) => ({
-      monitoringPoints: state.monitoringPoints.map((p) =>
-        p.id === point.id ? point : p
-      ),
-    })),
-
-  addMonitoringPoint: (point) =>
-    set((state) => ({
-      monitoringPoints: [...state.monitoringPoints, point],
-    })),
-
-  removeMonitoringPoint: (id) =>
-    set((state) => ({
-      monitoringPoints: state.monitoringPoints.filter((p) => p.id !== id),
-    })),
-
-  updateCurrentReading: (reading) =>
-    set((state) => ({
-      currentReadings: state.currentReadings.map((r) =>
-        r.pointId === reading.pointId ? reading : r
-      ),
-    })),
-
-  addHistoryReading: (reading) =>
-    set((state) => ({
-      historyReadings: [...state.historyReadings, reading],
-    })),
+  getCurrentReadingByPointId: (pointId) =>
+    get().currentReadings.find((r) => r.pointId === pointId),
 
   getHistoryReadingsByPointId: (pointId) =>
     get()
       .historyReadings.filter((r) => r.pointId === pointId)
       .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()),
 
-  addAlert: (alert) =>
-    set((state) => ({
-      alerts: [alert, ...state.alerts],
-    })),
+  getFilteredAlerts: (filters) => {
+    const { alerts } = get();
+    if (!filters) return alerts;
+    return alerts.filter((alert) => {
+      if (filters.level && alert.level !== filters.level) return false;
+      if (filters.status && alert.status !== filters.status) return false;
+      return true;
+    });
+  },
 
-  updateAlert: (alert) =>
-    set((state) => ({
-      alerts: state.alerts.map((a) => (a.id === alert.id ? alert : a)),
-    })),
+  getStatistics: () => {
+    const { monitoringPoints, alerts, currentReadings } = get();
+    const totalPoints = monitoringPoints.length;
+    const onlinePoints = monitoringPoints.filter((p) => p.status === 'online').length;
+    const offlinePoints = monitoringPoints.filter((p) => p.status === 'offline').length;
+    const maintenancePoints = monitoringPoints.filter((p) => p.status === 'maintenance').length;
+    const faultPoints = monitoringPoints.filter((p) => p.status === 'fault').length;
+    const pendingAlerts = alerts.filter((a) => a.status === 'pending').length;
+    const processingAlerts = alerts.filter((a) => a.status === 'processing').length;
+
+    const validReadings = currentReadings.filter((r) => r.doseRate > 0);
+    const avgDoseRate =
+      validReadings.length > 0
+        ? validReadings.reduce((sum, r) => sum + r.doseRate, 0) / validReadings.length
+        : 0;
+
+    return {
+      totalPoints,
+      onlinePoints,
+      offlinePoints,
+      maintenancePoints,
+      faultPoints,
+      pendingAlerts,
+      processingAlerts,
+      avgDoseRate: Number(avgDoseRate.toFixed(2)),
+    };
+  },
 
   updateAlertStatus: (id, status, handler, resolution) =>
     set((state) => ({
@@ -161,18 +147,51 @@ export const useMonitorStore = create<MonitorState>((set, get) => ({
       ),
     })),
 
-  getFilteredAlerts: () => {
-    const { alerts, alertFilters } = get();
-    return alerts.filter((alert) => {
-      if (alertFilters.level && alert.level !== alertFilters.level) return false;
-      if (alertFilters.status && alert.status !== alertFilters.status) return false;
-      return true;
-    });
-  },
-
-  addCalibrationRecord: (record) =>
+  updateBackgroundValue: (id, value, operator) =>
     set((state) => ({
-      calibrationRecords: [...state.calibrationRecords, record],
+      backgroundValues: state.backgroundValues.map((bg) =>
+        bg.id === id
+          ? {
+              ...bg,
+              value,
+              operator,
+              updatedAt: new Date().toISOString().split('T')[0],
+              history: [
+                ...bg.history,
+                { date: new Date().toISOString().slice(0, 7), value },
+              ],
+            }
+          : bg
+      ),
+    })),
+
+  addReport: (report) =>
+    set((state) => ({
+      reports: [report, ...state.reports],
+    })),
+
+  updateEmergencyStep: (recordId, stepId, status, operator) =>
+    set((state) => ({
+      emergencyRecords: state.emergencyRecords.map((record) =>
+        record.id === recordId
+          ? {
+              ...record,
+              steps: record.steps.map((step) =>
+                step.id === stepId
+                  ? {
+                      ...step,
+                      status,
+                      operator: operator ?? step.operator,
+                      completedAt:
+                        status === 'completed'
+                          ? new Date().toISOString()
+                          : step.completedAt,
+                    }
+                  : step
+              ),
+            }
+          : record
+      ),
     })),
 
   getCalibrationRecordsByPointId: (pointId) =>
@@ -183,74 +202,14 @@ export const useMonitorStore = create<MonitorState>((set, get) => ({
           new Date(b.calibrationDate).getTime() - new Date(a.calibrationDate).getTime()
       ),
 
-  addPersonnelDose: (dose) =>
-    set((state) => ({
-      personnelDoses: [...state.personnelDoses, dose],
-    })),
+  getBackgroundValueByPointId: (pointId) =>
+    get().backgroundValues.find((bg) => bg.pointId === pointId),
 
-  updatePersonnelDose: (dose) =>
-    set((state) => ({
-      personnelDoses: state.personnelDoses.map((d) =>
-        d.id === dose.id ? dose : d
-      ),
-    })),
-
-  addEmergencyRecord: (record) =>
-    set((state) => ({
-      emergencyRecords: [...state.emergencyRecords, record],
-    })),
-
-  updateEmergencyRecord: (record) =>
-    set((state) => ({
-      emergencyRecords: state.emergencyRecords.map((r) =>
-        r.id === record.id ? record : r
-      ),
-    })),
-
-  addReport: (report) =>
-    set((state) => ({
-      reports: [...state.reports, report],
-    })),
-
-  getFilteredPoints: () => {
-    const { monitoringPoints, pointStatusFilter } = get();
-    if (!pointStatusFilter) return monitoringPoints;
-    return monitoringPoints.filter((p) => p.status === pointStatusFilter);
-  },
-
-  getPointById: (id) => get().monitoringPoints.find((p) => p.id === id),
-
-  getCurrentReadingByPointId: (pointId) =>
-    get().currentReadings.find((r) => r.pointId === pointId),
-
-  getStatistics: () => {
-    const { monitoringPoints, alerts, currentReadings } = get();
-    const onlinePoints = monitoringPoints.filter((p) => p.status === 'online').length;
-    const offlinePoints = monitoringPoints.filter((p) => p.status === 'offline').length;
-    const maintenancePoints = monitoringPoints.filter(
-      (p) => p.status === 'maintenance'
-    ).length;
-    const faultPoints = monitoringPoints.filter((p) => p.status === 'fault').length;
-    const pendingAlerts = alerts.filter((a) => a.status === 'pending').length;
-    const processingAlerts = alerts.filter((a) => a.status === 'processing').length;
-
-    const validReadings = currentReadings.filter(
-      (r) => r.doseRate > 0 && r.pointId !== 'MP006'
-    );
-    const averageDoseRate =
-      validReadings.length > 0
-        ? validReadings.reduce((sum, r) => sum + r.doseRate, 0) / validReadings.length
-        : 0;
-
-    return {
-      totalPoints: monitoringPoints.length,
-      onlinePoints,
-      offlinePoints,
-      maintenancePoints,
-      faultPoints,
-      pendingAlerts,
-      processingAlerts,
-      averageDoseRate: Number(averageDoseRate.toFixed(2)),
-    };
+  getFilteredPoints: (status) => {
+    const { monitoringPoints } = get();
+    if (!status) return monitoringPoints;
+    return monitoringPoints.filter((p) => p.status === status);
   },
 }));
+
+export default useMonitorStore;

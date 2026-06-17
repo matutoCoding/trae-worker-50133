@@ -2,7 +2,7 @@ import { useState } from 'react';
 import ReactECharts from 'echarts-for-react';
 import { Card, CardContent, CardHeader, CardTitle, Badge, Button, Tabs, TabsList, TabsTrigger, TabsContent, Table, TableHeader, TableBody, TableRow, TableHead, TableCell, Input, Modal } from '@/components/ui';
 import { Wrench, Database, LineChart, AlertCircle, CheckCircle2, XCircle, Clock, Calendar, Edit2, User, FileText, BarChart3, TrendingUp } from 'lucide-react';
-import { useAppStore } from '@/store';
+import { useMonitorStore } from '@/store/useMonitorStore';
 import type { BackgroundValue } from '@/types';
 
 const resultConfig: Record<string, { label: string; variant: 'primary' | 'success' | 'warning' | 'danger' | 'notice' | 'default' }> = {
@@ -13,11 +13,11 @@ const resultConfig: Record<string, { label: string; variant: 'primary' | 'succes
 
 export default function Calibration() {
   const [activeTab, setActiveTab] = useState('calibration');
-  const calibrationRecords = useAppStore((state) => state.calibrationRecords);
-  const backgroundValues = useAppStore((state) => state.backgroundValues);
-  const qualityControlReports = useAppStore((state) => state.qualityControlReports);
-  const monitoringPoints = useAppStore((state) => state.monitoringPoints);
-  const updateBackgroundValue = useAppStore((state) => state.updateBackgroundValue);
+  const calibrationRecords = useMonitorStore((state) => state.calibrationRecords);
+  const backgroundValues = useMonitorStore((state) => state.backgroundValues);
+  const qualityControlReports = useMonitorStore((state) => state.qualityControlReports);
+  const monitoringPoints = useMonitorStore((state) => state.monitoringPoints);
+  const updateBackgroundValue = useMonitorStore((state) => state.updateBackgroundValue);
 
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [selectedBg, setSelectedBg] = useState<BackgroundValue | null>(null);
@@ -139,7 +139,7 @@ export default function Calibration() {
   };
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold text-[var(--color-text-primary)]">设备校准管理</h1>
       </div>

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, Badge, Button, Tabs, TabsList, TabsTrigger, TabsContent, Table, TableHeader, TableBody, TableRow, TableHead, TableCell, Input, Select, Progress } from '@/components/ui';
 import { FileText, Users, Search, Calendar, Eye, Download, FileType2, ChevronRight, Plus, AlertTriangle, Filter, Download as DownloadIcon } from 'lucide-react';
-import { useAppStore } from '@/store';
+import { useMonitorStore } from '@/store/useMonitorStore';
 import type { ReportType } from '@/types';
 
 const reportTypeConfig: Record<ReportType, { label: string }> = {
@@ -14,11 +14,11 @@ const reportTypeConfig: Record<ReportType, { label: string }> = {
 
 export default function Reports() {
   const [activeTab, setActiveTab] = useState('monitor');
-  const reports = useAppStore((state) => state.reports);
-  const personnelDoses = useAppStore((state) => state.personnelDoses);
-  const monitoringPoints = useAppStore((state) => state.monitoringPoints);
-  const radiationReadings = useAppStore((state) => state.radiationReadings);
-  const addReport = useAppStore((state) => state.addReport);
+  const reports = useMonitorStore((state) => state.reports);
+  const personnelDoses = useMonitorStore((state) => state.personnelDoses);
+  const monitoringPoints = useMonitorStore((state) => state.monitoringPoints);
+  const historyReadings = useMonitorStore((state) => state.historyReadings);
+  const addReport = useMonitorStore((state) => state.addReport);
 
   const [reportType, setReportType] = useState<ReportType>('daily');
   const [startDate, setStartDate] = useState('');
@@ -62,7 +62,7 @@ export default function Reports() {
     }, 1500);
   };
 
-  const queryResults = hasQueried ? radiationReadings.filter((r) => {
+  const queryResults = hasQueried ? historyReadings.filter((r) => {
     if (queryPoint !== 'all' && r.pointId !== queryPoint) return false;
     if (queryMinValue && r.doseRate < parseFloat(queryMinValue)) return false;
     if (queryMaxValue && r.doseRate > parseFloat(queryMaxValue)) return false;
@@ -70,7 +70,7 @@ export default function Reports() {
   }) : [];
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold text-[var(--color-text-primary)]">报告生成</h1>
       </div>

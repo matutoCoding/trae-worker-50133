@@ -1,31 +1,32 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import ReactECharts from 'echarts-for-react';
 import { Thermometer, Droplets, Activity, Clock, AlertTriangle } from 'lucide-react';
-import { useMonitorStore, type AlertLevel, type MonitorPoint } from '@/store/useMonitorStore';
+import { useMonitorStore } from '@/store/useMonitorStore';
+import type { AlertLevel, MonitoringPoint } from '@/types';
 import dayjs from 'dayjs';
 
-const alertLevelBgColors: Record<AlertLevel, string> = {
+const alertLevelBgColors: Record<AlertLevel | 'normal', string> = {
   normal: 'bg-gray-800/80 border-gray-700/50',
-  hint: 'bg-yellow-900/30 border-yellow-600/50',
+  notice: 'bg-yellow-900/30 border-yellow-600/50',
   warning: 'bg-orange-900/40 border-orange-600/60',
   severe: 'bg-red-900/50 border-red-500/60',
-  urgent: 'bg-red-950/70 border-red-600/80',
+  emergency: 'bg-red-950/70 border-red-600/80',
 };
 
-const alertLevelTextColors: Record<AlertLevel, string> = {
+const alertLevelTextColors: Record<AlertLevel | 'normal', string> = {
   normal: 'text-gray-200',
-  hint: 'text-yellow-300',
+  notice: 'text-yellow-300',
   warning: 'text-orange-300',
   severe: 'text-red-300',
-  urgent: 'text-red-400',
+  emergency: 'text-red-400',
 };
 
-const alertLevelLabels: Record<AlertLevel, string> = {
+const alertLevelLabels: Record<AlertLevel | 'normal', string> = {
   normal: '正常',
-  hint: '提示',
+  notice: '提示',
   warning: '警告',
   severe: '严重',
-  urgent: '紧急',
+  emergency: '紧急',
 };
 
 function DataCard({
@@ -33,12 +34,12 @@ function DataCard({
   selected,
   onClick,
 }: {
-  point: MonitorPoint;
+  point: MonitoringPoint;
   selected: boolean;
   onClick: () => void;
 }) {
-  const { getRealtimeByPointId } = useMonitorStore();
-  const realtime = getRealtimeByPointId(point.id);
+  const { getCurrentReadingByPointId } = useMonitorStore();
+  const realtime = getCurrentReadingByPointId(point.id);
   if (!realtime) return null;
 
   return (
@@ -53,7 +54,7 @@ function DataCard({
           className="absolute inset-0 rounded-xl pointer-events-none"
           style={{
             animation: 'pulse 2s ease-in-out infinite',
-            boxShadow: `0 0 20px ${realtime.alertLevel === 'urgent' ? 'rgba(220, 38, 38, 0.5)' :
+            boxShadow: `0 0 20px ${realtime.alertLevel === 'emergency' ? 'rgba(220, 38, 38, 0.5)' :
               realtime.alertLevel === 'severe' ? 'rgba(248, 113, 113, 0.4)' :
               realtime.alertLevel === 'warning' ? 'rgba(251, 146, 60, 0.4)' :
               'rgba(251, 191, 36, 0.3)'}`,
@@ -71,10 +72,10 @@ function DataCard({
           {realtime.doseRate}
         </div>
         <div className="flex items-center justify-between">
-          <span className="text-xs text-gray-400">μSv/h</span>
+          <span className="text-xs text-gray-400">{realtime.unit}</span>
           <span className="flex items-center gap-1 text-xs text-gray-500">
             <Clock className="w-3 h-3" />
-            {dayjs(realtime.collectTime).format('HH:mm:ss')}
+            {dayjs(realtime.timestamp).format('HH:mm:ss')}
           </span>
         </div>
       </div>
@@ -84,36 +85,65 @@ function DataCard({
 
 export default function RealtimeData() {
   const {
-    monitorPoints,
-    realtimeData,
+    monitoringPoints,
+    currentReadings,
+    historyReadings,
     alerts,
-    hourlyTrend,
     selectedPointId,
     setSelectedPointId,
-    refreshData,
     getPointById,
-    getRealtimeByPointId,
+    getCurrentReadingByPointId,
+    getHistoryReadingsByPointId,
   } = useMonitorStore();
 
   const [, setTick] = useState(0);
 
   useEffect(() => {
-    if (monitorPoints.length > 0 && !selectedPointId) {
-      const onlinePoint = monitorPoints.find(p => p.status === 'online');
+    if (monitoringPoints.length > 0 && !selectedPointId) {
+      const onlinePoint = monitoringPoints.find(p => p.status === 'online');
       if (onlinePoint) setSelectedPointId(onlinePoint.id);
     }
-  }, [monitorPoints, selectedPointId, setSelectedPointId]);
+  }, [monitoringPoints, selectedPointId, setSelectedPointId]);
 
   useEffect(() => {
     const timer = setInterval(() => {
-      refreshData();
       setTick(t => t + 1);
     }, 5000);
     return () => clearInterval(timer);
-  }, [refreshData]);
+  }, []);
 
   const selectedPoint = selectedPointId ? getPointById(selectedPointId) : null;
-  const selectedRealtime = selectedPointId ? getRealtimeByPointId(selectedPointId) : null;
+  const selectedRealtime = selectedPointId ? getCurrentReadingByPointId(selectedPointId) : null;
+
+  const hourlyTrend = useMemo(() => {
+    if (!selectedPointId) return [];
+    const history = getHistoryReadingsByPointId(selectedPointId);
+    const now = dayjs();
+    const twentyFourHoursAgo = now.subtract(24, 'hour');
+    const recentReadings = history.filter(r => 
+      dayjs(r.timestamp).isAfter(twentyFourHoursAgo)
+    );
+
+    const hourlyMap = new Map<string, { total: number; count: number }>();
+    
+    recentReadings.forEach(reading => {
+      const hourKey = dayjs(reading.timestamp).startOf('hour').toISOString();
+      const existing = hourlyMap.get(hourKey);
+      if (existing) {
+        existing.total += reading.doseRate;
+        existing.count += 1;
+      } else {
+        hourlyMap.set(hourKey, { total: reading.doseRate, count: 1 });
+      }
+    });
+
+    return Array.from(hourlyMap.entries())
+      .map(([time, data]) => ({
+        time,
+        value: Number((data.total / data.count).toFixed(4)),
+      }))
+      .sort((a, b) => new Date(a.time).getTime() - new Date(b.time).getTime());
+  }, [selectedPointId, historyReadings, getHistoryReadingsByPointId]);
 
   const miniTrendOption = {
     backgroundColor: 'transparent',
@@ -156,13 +186,15 @@ export default function RealtimeData() {
     ],
   };
 
-  const abnormalData = realtimeData
+  const abnormalData = currentReadings
     .filter(r => r.alertLevel !== 'normal')
     .map(r => ({ ...r, point: getPointById(r.pointId) }))
     .filter(r => r.point);
 
+  const activeAlerts = alerts.filter(a => a.status === 'pending' || a.status === 'processing');
+
   return (
-    <div className="p-6 bg-gray-900 min-h-screen text-white">
+    <div className="text-text-primary">
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold">实时数据大屏</h1>
         <div className="flex items-center gap-2">
@@ -175,7 +207,7 @@ export default function RealtimeData() {
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-        {monitorPoints.map(point => (
+        {monitoringPoints.map(point => (
           <DataCard
             key={point.id}
             point={point}
@@ -198,7 +230,7 @@ export default function RealtimeData() {
                   <p className={`text-5xl font-bold font-mono ${alertLevelTextColors[selectedRealtime.alertLevel]}`}>
                     {selectedRealtime.doseRate}
                   </p>
-                  <p className="text-gray-500 mt-1">μSv/h</p>
+                  <p className="text-gray-500 mt-1">{selectedRealtime.unit}</p>
                 </div>
                 <div className="flex items-center gap-1 pb-2">
                   <span className={`px-3 py-1 rounded-full text-sm font-medium ${alertLevelBgColors[selectedRealtime.alertLevel]} ${alertLevelTextColors[selectedRealtime.alertLevel]} border`}>
@@ -227,7 +259,7 @@ export default function RealtimeData() {
                     <Activity className="w-4 h-4" />
                     累积剂量
                   </div>
-                  <p className="text-2xl font-semibold font-mono">{selectedRealtime.cumulativeDose} mSv</p>
+                  <p className="text-2xl font-semibold font-mono">{selectedRealtime.accumulatedDose} mSv</p>
                 </div>
               </div>
 
@@ -261,11 +293,11 @@ export default function RealtimeData() {
                     </span>
                   </div>
                   <div className={`text-xl font-bold font-mono mb-1 ${alertLevelTextColors[item.alertLevel]}`}>
-                    {item.doseRate} μSv/h
+                    {item.doseRate} {item.unit}
                   </div>
                   <p className="text-xs text-gray-400 flex items-center gap-1">
                     <Clock className="w-3 h-3" />
-                    {dayjs(item.collectTime).format('YYYY-MM-DD HH:mm:ss')}
+                    {dayjs(item.timestamp).format('YYYY-MM-DD HH:mm:ss')}
                   </p>
                 </div>
               ))
@@ -275,7 +307,7 @@ export default function RealtimeData() {
                 <p className="text-sm">暂无异常数据</p>
               </div>
             )}
-            {alerts.filter(a => !a.handled).map(alert => (
+            {activeAlerts.map(alert => (
               <div
                 key={alert.id}
                 onClick={() => setSelectedPointId(alert.pointId)}
@@ -287,10 +319,10 @@ export default function RealtimeData() {
                     {alertLevelLabels[alert.level]}
                   </span>
                 </div>
-                <p className="text-xs text-gray-300 mb-1">{alert.message}</p>
+                <p className="text-xs text-gray-300 mb-1">{alert.description}</p>
                 <p className="text-xs text-gray-400 flex items-center gap-1">
                   <Clock className="w-3 h-3" />
-                  {alert.time}
+                  {dayjs(alert.timestamp).format('YYYY-MM-DD HH:mm:ss')}
                 </p>
               </div>
             ))}

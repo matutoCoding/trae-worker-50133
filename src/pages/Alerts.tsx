@@ -1,14 +1,15 @@
 import { useState, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, Badge, Button, Input, Select, Modal } from '@/components/ui';
 import { AlertTriangle, Search, Clock, MapPin, Activity, CheckCircle2, XCircle, Eye, RotateCcw, AlertOctagon, AlertCircle, Info } from 'lucide-react';
-import { useAppStore } from '@/store';
+import { useMonitorStore } from '@/store/useMonitorStore';
 import type { Alert, AlertLevel, AlertStatus } from '@/types';
 
 const levelConfig: Record<AlertLevel, { color: string; label: string; variant: 'primary' | 'success' | 'warning' | 'danger' | 'notice' | 'default'; icon: typeof AlertTriangle }> = {
-  emergency: { color: 'bg-[var(--color-accent-danger)]', label: '紧急', variant: 'danger', icon: AlertOctagon },
-  severe: { color: 'bg-[var(--color-accent-notice)]', label: '严重', variant: 'notice', icon: AlertTriangle },
-  warning: { color: 'bg-[var(--color-accent-warning)]', label: '警告', variant: 'warning', icon: AlertCircle },
+  normal: { color: 'bg-[var(--color-accent-success)]', label: '正常', variant: 'success', icon: Info },
   notice: { color: 'bg-[var(--color-accent-primary)]', label: '注意', variant: 'primary', icon: Info },
+  warning: { color: 'bg-[var(--color-accent-warning)]', label: '警告', variant: 'warning', icon: AlertCircle },
+  severe: { color: 'bg-[var(--color-accent-notice)]', label: '严重', variant: 'notice', icon: AlertTriangle },
+  emergency: { color: 'bg-[var(--color-accent-danger)]', label: '紧急', variant: 'danger', icon: AlertOctagon },
 };
 
 const statusConfig: Record<AlertStatus, { label: string; variant: 'primary' | 'success' | 'warning' | 'danger' | 'notice' | 'default' }> = {
@@ -19,8 +20,8 @@ const statusConfig: Record<AlertStatus, { label: string; variant: 'primary' | 's
 };
 
 export default function Alerts() {
-  const alerts = useAppStore((state) => state.alerts);
-  const updateAlertStatus = useAppStore((state) => state.updateAlertStatus);
+  const alerts = useMonitorStore((state) => state.alerts);
+  const updateAlertStatus = useMonitorStore((state) => state.updateAlertStatus);
 
   const [levelFilter, setLevelFilter] = useState<string>('all');
   const [statusFilter, setStatusFilter] = useState<string>('all');
@@ -76,7 +77,7 @@ export default function Alerts() {
   };
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold text-[var(--color-text-primary)]">异常预警管理</h1>
         <Badge variant="danger" className="text-base px-4 py-1">

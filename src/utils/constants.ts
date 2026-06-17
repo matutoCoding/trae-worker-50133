@@ -105,12 +105,12 @@ export const ALERT_STATUS_CONFIG: Record<AlertStatus, { label: string; color: st
 
 // 校准结果映射
 export const CALIBRATION_RESULT_CONFIG: Record<CalibrationResult, { label: string; color: string; bgColor: string }> = {
-  passed: {
+  pass: {
     label: '通过',
     color: COLORS.success,
     bgColor: '#dcfce7',
   },
-  failed: {
+  fail: {
     label: '失败',
     color: COLORS.danger,
     bgColor: '#fee2e2',
@@ -127,8 +127,8 @@ export const REPORT_TYPE_CONFIG: Record<ReportType, { label: string }> = {
   daily: { label: '日报' },
   weekly: { label: '周报' },
   monthly: { label: '月报' },
-  quarterly: { label: '季报' },
-  annual: { label: '年报' },
+  yearly: { label: '年报' },
+  custom: { label: '自定义报告' },
 };
 
 // 默认剂量率单位

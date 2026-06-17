@@ -3,30 +3,32 @@ import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { MapPin, List, Search, Filter, Battery, Wifi, Eye, Settings, ChevronLeft, ChevronRight } from 'lucide-react';
-import { useMonitorStore, type MonitorPointStatus, type AlertLevel } from '@/store/useMonitorStore';
+import { useMonitorStore } from '@/store/useMonitorStore';
+import type { PointStatus } from '@/types';
+import dayjs from 'dayjs';
 
-const statusColors: Record<MonitorPointStatus, string> = {
+const statusColors: Record<PointStatus, string> = {
   online: '#22c55e',
   offline: '#6b7280',
   maintenance: '#eab308',
   fault: '#ef4444',
 };
 
-const statusLabels: Record<MonitorPointStatus, string> = {
+const statusLabels: Record<PointStatus, string> = {
   online: '在线',
   offline: '离线',
   maintenance: '维护',
   fault: '故障',
 };
 
-const statusBadgeColors: Record<MonitorPointStatus, string> = {
+const statusBadgeColors: Record<PointStatus, string> = {
   online: 'bg-green-500/20 text-green-400 border-green-500/30',
   offline: 'bg-gray-500/20 text-gray-400 border-gray-500/30',
   maintenance: 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30',
   fault: 'bg-red-500/20 text-red-400 border-red-500/30',
 };
 
-function Badge({ status }: { status: MonitorPointStatus }) {
+function Badge({ status }: { status: PointStatus }) {
   return (
     <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium border ${statusBadgeColors[status]}`}>
       <span className="w-1.5 h-1.5 rounded-full mr-1.5" style={{ backgroundColor: statusColors[status] }} />
@@ -53,21 +55,21 @@ function createColoredIcon(color: string) {
 }
 
 export default function MonitoringPoints() {
-  const { monitorPoints, getRealtimeByPointId } = useMonitorStore();
+  const { monitoringPoints, getCurrentReadingByPointId } = useMonitorStore();
   const [view, setView] = useState<'map' | 'list'>('map');
   const [searchText, setSearchText] = useState('');
-  const [statusFilter, setStatusFilter] = useState<MonitorPointStatus | 'all'>('all');
+  const [statusFilter, setStatusFilter] = useState<PointStatus | 'all'>('all');
   const [page, setPage] = useState(1);
   const pageSize = 5;
 
   const filteredPoints = useMemo(() => {
-    return monitorPoints.filter(p => {
+    return monitoringPoints.filter(p => {
       const matchSearch = p.name.toLowerCase().includes(searchText.toLowerCase()) ||
         p.code.toLowerCase().includes(searchText.toLowerCase());
       const matchStatus = statusFilter === 'all' || p.status === statusFilter;
       return matchSearch && matchStatus;
     });
-  }, [monitorPoints, searchText, statusFilter]);
+  }, [monitoringPoints, searchText, statusFilter]);
 
   const paginatedPoints = useMemo(() => {
     const start = (page - 1) * pageSize;
@@ -79,7 +81,7 @@ export default function MonitoringPoints() {
   const center: [number, number] = [39.9042, 116.4074];
 
   return (
-    <div className="p-6 bg-gray-900 min-h-screen text-white">
+    <div className="text-text-primary">
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold">监测点位管理</h1>
         <div className="flex items-center gap-2 bg-gray-800/60 rounded-lg p-1 border border-gray-700/50">
@@ -120,7 +122,7 @@ export default function MonitoringPoints() {
             <Filter className="w-4 h-4 text-gray-400" />
             <select
               value={statusFilter}
-              onChange={e => { setStatusFilter(e.target.value as MonitorPointStatus | 'all'); setPage(1); }}
+              onChange={e => { setStatusFilter(e.target.value as PointStatus | 'all'); setPage(1); }}
               className="bg-gray-800/60 border border-gray-700/50 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-500/50"
             >
               <option value="all">全部状态</option>
@@ -144,12 +146,12 @@ export default function MonitoringPoints() {
               attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/">CARTO</a>'
               url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
             />
-            {monitorPoints.map(point => {
-              const realtime = getRealtimeByPointId(point.id);
+            {monitoringPoints.map(point => {
+              const realtime = getCurrentReadingByPointId(point.id);
               return (
                 <Marker
                   key={point.id}
-                  position={[point.lat, point.lng]}
+                  position={[point.location.lat, point.location.lng]}
                   icon={createColoredIcon(statusColors[point.status])}
                 >
                   <Popup>
@@ -157,21 +159,21 @@ export default function MonitoringPoints() {
                       <h4 className="font-bold text-base mb-2">{point.name}</h4>
                       <div className="space-y-1 text-sm">
                         <p><span className="text-gray-500">编号：</span>{point.code}</p>
-                        <p><span className="text-gray-500">地址：</span>{point.address}</p>
-                        <p><span className="text-gray-500">设备型号：</span>{point.deviceModel}</p>
+                        <p><span className="text-gray-500">地址：</span>{point.location.address}</p>
+                        <p><span className="text-gray-500">设备型号：</span>{point.device.model}</p>
                         <p><span className="text-gray-500">当前剂量率：</span>
                           <span className="font-mono font-semibold text-cyan-600">
-                            {realtime ? `${realtime.doseRate} μSv/h` : '--'}
+                            {realtime ? `${realtime.doseRate} ${realtime.unit}` : '--'}
                           </span>
                         </p>
                         <p><span className="text-gray-500">状态：</span>{statusLabels[point.status]}</p>
                         <p className="flex items-center gap-1">
                           <Battery className="w-3.5 h-3.5" />
-                          <span className="text-gray-500">电量：</span>{point.battery}%
+                          <span className="text-gray-500">电量：</span>{point.batteryLevel}%
                         </p>
                         <p className="flex items-center gap-1">
                           <Wifi className="w-3.5 h-3.5" />
-                          <span className="text-gray-500">信号：</span>{point.signal}%
+                          <span className="text-gray-500">信号：</span>{point.signalStrength}%
                         </p>
                       </div>
                     </div>
@@ -204,23 +206,25 @@ export default function MonitoringPoints() {
                   <tr key={point.id} className="border-b border-gray-700/30 hover:bg-gray-700/30 transition-colors">
                     <td className="py-3 px-5 text-white font-medium">{point.name}</td>
                     <td className="py-3 px-5 text-gray-300 font-mono text-sm">{point.code}</td>
-                    <td className="py-3 px-5 text-gray-300">{point.area}</td>
-                    <td className="py-3 px-5 text-gray-300">{point.deviceModel}</td>
+                    <td className="py-3 px-5 text-gray-300">{point.location.district}</td>
+                    <td className="py-3 px-5 text-gray-300">{point.device.model}</td>
                     <td className="py-3 px-5"><Badge status={point.status} /></td>
                     <td className="py-3 px-5 text-gray-300">
                       <div className="flex items-center gap-2">
-                        <Battery className={`w-4 h-4 ${point.battery < 30 ? 'text-red-400' : point.battery < 60 ? 'text-yellow-400' : 'text-green-400'}`} />
-                        <span>{point.battery}%</span>
+                        <Battery className={`w-4 h-4 ${point.batteryLevel < 30 ? 'text-red-400' : point.batteryLevel < 60 ? 'text-yellow-400' : 'text-green-400'}`} />
+                        <span>{point.batteryLevel}%</span>
                       </div>
                     </td>
                     <td className="py-3 px-5 text-gray-300">
                       <div className="flex items-center gap-2">
                         <Wifi className="w-4 h-4 text-cyan-400" />
-                        <span>{point.signal}%</span>
+                        <span>{point.signalStrength}%</span>
                       </div>
                     </td>
                     <td className="py-3 px-5 text-gray-300 font-mono">{point.backgroundValue} μSv/h</td>
-                    <td className="py-3 px-5 text-gray-300 text-sm">{point.lastCalibration}</td>
+                    <td className="py-3 px-5 text-gray-300 text-sm">
+                      {dayjs(point.lastCalibrationDate).format('YYYY-MM-DD')}
+                    </td>
                     <td className="py-3 px-5">
                       <div className="flex items-center gap-2">
                         <button className="p-1.5 rounded-md bg-cyan-500/10 text-cyan-400 hover:bg-cyan-500/20 transition-colors">

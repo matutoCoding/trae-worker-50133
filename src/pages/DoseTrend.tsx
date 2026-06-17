@@ -17,11 +17,11 @@ function hexToRgba(hex: string, alpha: number) {
 }
 
 export default function DoseTrend() {
-  const { monitorPoints, doseTrendData } = useMonitorStore();
+  const { monitoringPoints, historyReadings, getPointById } = useMonitorStore();
   const [timeRange, setTimeRange] = useState<TimeRange>('day');
   const [dataType, setDataType] = useState<DataType>('cumulative');
   const [selectedPointIds, setSelectedPointIds] = useState<string[]>(
-    monitorPoints.filter(p => p.status === 'online').slice(0, 3).map(p => p.id)
+    monitoringPoints.filter(p => p.status === 'online').slice(0, 3).map(p => p.id)
   );
 
   const togglePoint = (id: string) => {
@@ -37,6 +37,32 @@ export default function DoseTrend() {
     if (timeRange === 'month') return d.format('MM-DD');
     return d.format('YYYY-MM');
   };
+
+  const doseTrendData = useMemo(() => {
+    const grouped = new Map<string, { pointId: string; pointName: string; data: { time: string; value: number }[] }>();
+
+    historyReadings.forEach(reading => {
+      const point = getPointById(reading.pointId);
+      if (!point) return;
+
+      if (!grouped.has(reading.pointId)) {
+        grouped.set(reading.pointId, {
+          pointId: reading.pointId,
+          pointName: point.name,
+          data: [],
+        });
+      }
+
+      const group = grouped.get(reading.pointId)!;
+      const value = dataType === 'cumulative' ? reading.accumulatedDose : reading.doseRate;
+      group.data.push({ time: reading.timestamp, value });
+    });
+
+    return Array.from(grouped.values()).map(g => ({
+      ...g,
+      data: g.data.sort((a, b) => new Date(a.time).getTime() - new Date(b.time).getTime()),
+    }));
+  }, [historyReadings, dataType, getPointById]);
 
   const selectedTrendData = useMemo(() => {
     return doseTrendData.filter(d => selectedPointIds.includes(d.pointId));
@@ -153,13 +179,13 @@ export default function DoseTrend() {
   };
 
   const radarData = useMemo(() => {
-    const indicators = monitorPoints.slice(0, 6).map(p => ({
+    const indicators = monitoringPoints.slice(0, 6).map(p => ({
       name: p.name,
       max: 0.3,
     }));
-    const values = monitorPoints.slice(0, 6).map(p => p.backgroundValue);
+    const values = monitoringPoints.slice(0, 6).map(p => p.backgroundValue);
     return { indicators, values };
-  }, [monitorPoints]);
+  }, [monitoringPoints]);
 
   const radarChartOption = {
     backgroundColor: 'transparent',
@@ -205,7 +231,7 @@ export default function DoseTrend() {
   };
 
   return (
-    <div className="p-6 bg-gray-900 min-h-screen text-white">
+    <div className="text-text-primary">
       <h1 className="text-2xl font-bold mb-6">剂量趋势分析</h1>
 
       <div className="bg-gray-800/60 backdrop-blur rounded-xl p-5 border border-gray-700/50 mb-6">
@@ -257,7 +283,7 @@ export default function DoseTrend() {
             <MapPin className="w-4 h-4 text-gray-400 mt-1.5" />
             <span className="text-sm text-gray-400 mt-1.5">监测点：</span>
             <div className="flex flex-wrap gap-2">
-              {monitorPoints.filter(p => p.status === 'online').map((point, idx) => {
+              {monitoringPoints.filter(p => p.status === 'online').map((point, idx) => {
                 const isSelected = selectedPointIds.includes(point.id);
                 return (
                   <button

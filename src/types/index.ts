@@ -1,5 +1,7 @@
-export type AlertLevel = 'notice' | 'warning' | 'severe' | 'emergency';
+export type AlertLevel = 'normal' | 'notice' | 'warning' | 'severe' | 'emergency';
 export type AlertStatus = 'pending' | 'processing' | 'resolved' | 'ignored';
+export type PointStatus = 'online' | 'offline' | 'maintenance' | 'fault';
+export type CalibrationResult = 'pass' | 'fail' | 'conditional';
 
 export interface Alert {
   id: string;
@@ -32,17 +34,21 @@ export interface EmergencyStep {
 
 export interface EmergencyRecord {
   id: string;
-  alertId: string;
+  alertId?: string;
   title: string;
+  description?: string;
   level: AlertLevel;
+  pointIds?: string[];
   startTime: string;
   endTime?: string;
   status: EmergencyStatus;
-  handler: string;
-  team: string[];
+  handler?: string;
+  commander?: string;
+  team?: string[];
+  personnel?: string[];
   steps: EmergencyStep[];
-  traceability: string;
-  summary: string;
+  traceability?: string;
+  summary?: string;
 }
 
 export interface CalibrationRecord {
@@ -55,7 +61,7 @@ export interface CalibrationRecord {
   afterValue: number;
   backgroundValue: number;
   certificateNumber: string;
-  result: 'pass' | 'fail' | 'conditional';
+  result: CalibrationResult;
   remarks: string;
   nextCalibrationDate: string;
 }
@@ -133,7 +139,7 @@ export interface MonitoringPoint {
     installDate: string;
     manufacturer: string;
   };
-  status: 'online' | 'offline' | 'maintenance' | 'fault';
+  status: PointStatus;
   batteryLevel: number;
   signalStrength: number;
   backgroundValue: number;
@@ -153,5 +159,5 @@ export interface RadiationReading {
   humidity: number;
   timestamp: string;
   isAbnormal: boolean;
-  alertLevel: 'normal' | AlertLevel;
+  alertLevel: AlertLevel;
 }

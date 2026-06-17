@@ -2,14 +2,15 @@ import { useState } from 'react';
 import ReactECharts from 'echarts-for-react';
 import { Card, CardContent, CardHeader, CardTitle, Badge, Button, Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui';
 import { AlertTriangle, Users, Activity, MapPin, Clock, CheckCircle2, Circle, CircleDot, ChevronRight, AlertOctagon, User, FileText } from 'lucide-react';
-import { useAppStore } from '@/store';
+import { useMonitorStore } from '@/store/useMonitorStore';
 import type { EmergencyRecord, EmergencyStep, AlertLevel } from '@/types';
 
 const levelConfig: Record<AlertLevel, { label: string; variant: 'primary' | 'success' | 'warning' | 'danger' | 'notice' | 'default' }> = {
-  emergency: { label: '紧急', variant: 'danger' },
-  severe: { label: '严重', variant: 'notice' },
-  warning: { label: '警告', variant: 'warning' },
+  normal: { label: '正常', variant: 'success' },
   notice: { label: '注意', variant: 'primary' },
+  warning: { label: '警告', variant: 'warning' },
+  severe: { label: '严重', variant: 'notice' },
+  emergency: { label: '紧急', variant: 'danger' },
 };
 
 const stepStatusConfig: Record<EmergencyStep['status'], { label: string; variant: 'primary' | 'success' | 'warning' | 'danger' | 'notice' | 'default'; icon: typeof Circle }> = {
@@ -19,8 +20,8 @@ const stepStatusConfig: Record<EmergencyStep['status'], { label: string; variant
 };
 
 export default function Emergency() {
-  const emergencyRecords = useAppStore((state) => state.emergencyRecords);
-  const updateEmergencyStep = useAppStore((state) => state.updateEmergencyStep);
+  const emergencyRecords = useMonitorStore((state) => state.emergencyRecords);
+  const updateEmergencyStep = useMonitorStore((state) => state.updateEmergencyStep);
   const [selectedRecord, setSelectedRecord] = useState<EmergencyRecord>(emergencyRecords[0]);
 
   const activeRecords = emergencyRecords.filter((r) => r.status === 'active');
@@ -90,7 +91,7 @@ export default function Emergency() {
   };
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold text-[var(--color-text-primary)]">应急处置</h1>
         <Badge variant="danger" className="text-base px-4 py-1">
@@ -130,11 +131,11 @@ export default function Emergency() {
                         <div className="flex flex-wrap gap-x-6 gap-y-1 text-sm text-[var(--color-text-secondary)]">
                           <span className="flex items-center gap-1.5">
                             <User className="w-4 h-4" />
-                            {record.handler}
+                            {record.handler || record.commander}
                           </span>
                           <span className="flex items-center gap-1.5">
                             <Users className="w-4 h-4" />
-                            {record.team.join('、')}
+                            {(record.team || record.personnel || []).join('、')}
                           </span>
                           <span className="flex items-center gap-1.5">
                             <Clock className="w-4 h-4" />
