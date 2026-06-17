@@ -1,0 +1,309 @@
+import { useState, useEffect } from 'react';
+import ReactECharts from 'echarts-for-react';
+import { Thermometer, Droplets, Activity, Clock, AlertTriangle } from 'lucide-react';
+import { useMonitorStore, type AlertLevel, type MonitorPoint } from '@/store/useMonitorStore';
+import dayjs from 'dayjs';
+
+const alertLevelBgColors: Record<AlertLevel, string> = {
+  normal: 'bg-gray-800/80 border-gray-700/50',
+  hint: 'bg-yellow-900/30 border-yellow-600/50',
+  warning: 'bg-orange-900/40 border-orange-600/60',
+  severe: 'bg-red-900/50 border-red-500/60',
+  urgent: 'bg-red-950/70 border-red-600/80',
+};
+
+const alertLevelTextColors: Record<AlertLevel, string> = {
+  normal: 'text-gray-200',
+  hint: 'text-yellow-300',
+  warning: 'text-orange-300',
+  severe: 'text-red-300',
+  urgent: 'text-red-400',
+};
+
+const alertLevelLabels: Record<AlertLevel, string> = {
+  normal: '正常',
+  hint: '提示',
+  warning: '警告',
+  severe: '严重',
+  urgent: '紧急',
+};
+
+function DataCard({
+  point,
+  selected,
+  onClick,
+}: {
+  point: MonitorPoint;
+  selected: boolean;
+  onClick: () => void;
+}) {
+  const { getRealtimeByPointId } = useMonitorStore();
+  const realtime = getRealtimeByPointId(point.id);
+  if (!realtime) return null;
+
+  return (
+    <div
+      onClick={onClick}
+      className={`relative rounded-xl p-4 cursor-pointer border transition-all duration-300 ${alertLevelBgColors[realtime.alertLevel]} ${
+        selected ? 'ring-2 ring-cyan-400 scale-[1.02]' : 'hover:scale-[1.01]'
+      }`}
+    >
+      {realtime.alertLevel !== 'normal' && (
+        <div
+          className="absolute inset-0 rounded-xl pointer-events-none"
+          style={{
+            animation: 'pulse 2s ease-in-out infinite',
+            boxShadow: `0 0 20px ${realtime.alertLevel === 'urgent' ? 'rgba(220, 38, 38, 0.5)' :
+              realtime.alertLevel === 'severe' ? 'rgba(248, 113, 113, 0.4)' :
+              realtime.alertLevel === 'warning' ? 'rgba(251, 146, 60, 0.4)' :
+              'rgba(251, 191, 36, 0.3)'}`,
+          }}
+        />
+      )}
+      <div className="relative">
+        <div className="flex items-start justify-between mb-2">
+          <h3 className="text-white font-medium text-sm">{point.name}</h3>
+          <span className={`text-xs px-1.5 py-0.5 rounded ${realtime.alertLevel !== 'normal' ? 'bg-black/30' : 'bg-gray-700/50'} ${alertLevelTextColors[realtime.alertLevel]}`}>
+            {alertLevelLabels[realtime.alertLevel]}
+          </span>
+        </div>
+        <div className={`text-3xl font-bold font-mono mb-1 ${alertLevelTextColors[realtime.alertLevel]}`}>
+          {realtime.doseRate}
+        </div>
+        <div className="flex items-center justify-between">
+          <span className="text-xs text-gray-400">μSv/h</span>
+          <span className="flex items-center gap-1 text-xs text-gray-500">
+            <Clock className="w-3 h-3" />
+            {dayjs(realtime.collectTime).format('HH:mm:ss')}
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export default function RealtimeData() {
+  const {
+    monitorPoints,
+    realtimeData,
+    alerts,
+    hourlyTrend,
+    selectedPointId,
+    setSelectedPointId,
+    refreshData,
+    getPointById,
+    getRealtimeByPointId,
+  } = useMonitorStore();
+
+  const [, setTick] = useState(0);
+
+  useEffect(() => {
+    if (monitorPoints.length > 0 && !selectedPointId) {
+      const onlinePoint = monitorPoints.find(p => p.status === 'online');
+      if (onlinePoint) setSelectedPointId(onlinePoint.id);
+    }
+  }, [monitorPoints, selectedPointId, setSelectedPointId]);
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      refreshData();
+      setTick(t => t + 1);
+    }, 5000);
+    return () => clearInterval(timer);
+  }, [refreshData]);
+
+  const selectedPoint = selectedPointId ? getPointById(selectedPointId) : null;
+  const selectedRealtime = selectedPointId ? getRealtimeByPointId(selectedPointId) : null;
+
+  const miniTrendOption = {
+    backgroundColor: 'transparent',
+    grid: { left: 35, right: 10, top: 10, bottom: 25 },
+    tooltip: {
+      trigger: 'axis',
+      backgroundColor: 'rgba(31, 41, 55, 0.95)',
+      borderColor: '#374151',
+      textStyle: { color: '#e5e7eb' },
+    },
+    xAxis: {
+      type: 'time',
+      axisLine: { lineStyle: { color: '#4b5563' } },
+      axisLabel: { color: '#9ca3af', fontSize: 10, formatter: (v: number) => dayjs(v).format('HH:mm') },
+    },
+    yAxis: {
+      type: 'value',
+      axisLine: { lineStyle: { color: '#4b5563' } },
+      axisLabel: { color: '#9ca3af', fontSize: 10 },
+      splitLine: { lineStyle: { color: '#374151', type: 'dashed' } },
+    },
+    series: [
+      {
+        type: 'line',
+        smooth: true,
+        symbol: 'none',
+        lineStyle: { color: '#22d3ee', width: 2 },
+        areaStyle: {
+          color: {
+            type: 'linear',
+            x: 0, y: 0, x2: 0, y2: 1,
+            colorStops: [
+              { offset: 0, color: 'rgba(34, 211, 238, 0.3)' },
+              { offset: 1, color: 'rgba(34, 211, 238, 0)' },
+            ],
+          },
+        },
+        data: hourlyTrend.map(p => [p.time, p.value]),
+      },
+    ],
+  };
+
+  const abnormalData = realtimeData
+    .filter(r => r.alertLevel !== 'normal')
+    .map(r => ({ ...r, point: getPointById(r.pointId) }))
+    .filter(r => r.point);
+
+  return (
+    <div className="p-6 bg-gray-900 min-h-screen text-white">
+      <div className="flex items-center justify-between mb-6">
+        <h1 className="text-2xl font-bold">实时数据大屏</h1>
+        <div className="flex items-center gap-2">
+          <span className="relative flex h-3 w-3">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" />
+            <span className="relative inline-flex rounded-full h-3 w-3 bg-green-500" />
+          </span>
+          <span className="text-sm text-gray-400">实时更新中</span>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+        {monitorPoints.map(point => (
+          <DataCard
+            key={point.id}
+            point={point}
+            selected={selectedPointId === point.id}
+            onClick={() => setSelectedPointId(point.id)}
+          />
+        ))}
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        <div className="lg:col-span-2 bg-gray-800/60 backdrop-blur rounded-xl border border-gray-700/50 p-5">
+          <h3 className="text-lg font-semibold mb-4">
+            {selectedPoint ? selectedPoint.name : '选择监测点查看详情'}
+          </h3>
+          {selectedPoint && selectedRealtime ? (
+            <>
+              <div className="flex items-end gap-6 mb-6">
+                <div>
+                  <p className="text-sm text-gray-400 mb-1">当前剂量率</p>
+                  <p className={`text-5xl font-bold font-mono ${alertLevelTextColors[selectedRealtime.alertLevel]}`}>
+                    {selectedRealtime.doseRate}
+                  </p>
+                  <p className="text-gray-500 mt-1">μSv/h</p>
+                </div>
+                <div className="flex items-center gap-1 pb-2">
+                  <span className={`px-3 py-1 rounded-full text-sm font-medium ${alertLevelBgColors[selectedRealtime.alertLevel]} ${alertLevelTextColors[selectedRealtime.alertLevel]} border`}>
+                    {alertLevelLabels[selectedRealtime.alertLevel]}
+                  </span>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-3 gap-4 mb-6">
+                <div className="bg-gray-900/50 rounded-lg p-4">
+                  <div className="flex items-center gap-2 text-gray-400 text-sm mb-1">
+                    <Thermometer className="w-4 h-4" />
+                    温度
+                  </div>
+                  <p className="text-2xl font-semibold font-mono">{selectedRealtime.temperature}°C</p>
+                </div>
+                <div className="bg-gray-900/50 rounded-lg p-4">
+                  <div className="flex items-center gap-2 text-gray-400 text-sm mb-1">
+                    <Droplets className="w-4 h-4" />
+                    湿度
+                  </div>
+                  <p className="text-2xl font-semibold font-mono">{selectedRealtime.humidity}%</p>
+                </div>
+                <div className="bg-gray-900/50 rounded-lg p-4">
+                  <div className="flex items-center gap-2 text-gray-400 text-sm mb-1">
+                    <Activity className="w-4 h-4" />
+                    累积剂量
+                  </div>
+                  <p className="text-2xl font-semibold font-mono">{selectedRealtime.cumulativeDose} mSv</p>
+                </div>
+              </div>
+
+              <p className="text-sm text-gray-400 mb-2">近24小时趋势</p>
+              <ReactECharts option={miniTrendOption} style={{ height: 200 }} />
+            </>
+          ) : (
+            <div className="flex items-center justify-center h-64 text-gray-500">
+              请从上方选择一个监测点
+            </div>
+          )}
+        </div>
+
+        <div className="bg-gray-800/60 backdrop-blur rounded-xl border border-gray-700/50 p-5">
+          <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
+            <AlertTriangle className="w-5 h-5 text-yellow-400" />
+            异常数据列表
+          </h3>
+          <div className="space-y-3 max-h-[500px] overflow-y-auto pr-1">
+            {abnormalData.length > 0 ? (
+              abnormalData.map(item => (
+                <div
+                  key={item.pointId}
+                  onClick={() => setSelectedPointId(item.pointId)}
+                  className={`p-3 rounded-lg border cursor-pointer transition-all hover:scale-[1.01] ${alertLevelBgColors[item.alertLevel]}`}
+                >
+                  <div className="flex items-start justify-between mb-1">
+                    <span className="text-white text-sm font-medium">{item.point?.name}</span>
+                    <span className={`text-xs px-1.5 py-0.5 rounded ${alertLevelTextColors[item.alertLevel]}`}>
+                      {alertLevelLabels[item.alertLevel]}
+                    </span>
+                  </div>
+                  <div className={`text-xl font-bold font-mono mb-1 ${alertLevelTextColors[item.alertLevel]}`}>
+                    {item.doseRate} μSv/h
+                  </div>
+                  <p className="text-xs text-gray-400 flex items-center gap-1">
+                    <Clock className="w-3 h-3" />
+                    {dayjs(item.collectTime).format('YYYY-MM-DD HH:mm:ss')}
+                  </p>
+                </div>
+              ))
+            ) : (
+              <div className="text-center text-gray-500 py-8">
+                <Activity className="w-10 h-10 mx-auto mb-2 opacity-50" />
+                <p className="text-sm">暂无异常数据</p>
+              </div>
+            )}
+            {alerts.filter(a => !a.handled).map(alert => (
+              <div
+                key={alert.id}
+                onClick={() => setSelectedPointId(alert.pointId)}
+                className={`p-3 rounded-lg border cursor-pointer transition-all hover:scale-[1.01] ${alertLevelBgColors[alert.level]}`}
+              >
+                <div className="flex items-start justify-between mb-1">
+                  <span className="text-white text-sm font-medium">{alert.pointName}</span>
+                  <span className={`text-xs px-1.5 py-0.5 rounded ${alertLevelTextColors[alert.level]}`}>
+                    {alertLevelLabels[alert.level]}
+                  </span>
+                </div>
+                <p className="text-xs text-gray-300 mb-1">{alert.message}</p>
+                <p className="text-xs text-gray-400 flex items-center gap-1">
+                  <Clock className="w-3 h-3" />
+                  {alert.time}
+                </p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <style>{`
+        @keyframes pulse {
+          0%, 100% { opacity: 0.4; }
+          50% { opacity: 0.8; }
+        }
+      `}</style>
+    </div>
+  );
+}
