@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, Badge, Button, Tabs, TabsList, TabsTrigger, TabsContent, Table, TableHeader, TableBody, TableRow, TableHead, TableCell, Input, Select, Progress } from '@/components/ui';
 import { FileText, Users, Search, Calendar, Eye, Download, FileType2, ChevronRight, Plus, AlertTriangle, Filter, Download as DownloadIcon } from 'lucide-react';
 import { useMonitorStore } from '@/store/useMonitorStore';
@@ -62,12 +62,74 @@ export default function Reports() {
     }, 1500);
   };
 
-  const queryResults = hasQueried ? historyReadings.filter((r) => {
-    if (queryPoint !== 'all' && r.pointId !== queryPoint) return false;
-    if (queryMinValue && r.doseRate < parseFloat(queryMinValue)) return false;
-    if (queryMaxValue && r.doseRate > parseFloat(queryMaxValue)) return false;
-    return true;
-  }) : [];
+  type DataTypeKey = 'all' | 'doseRate' | 'accumulatedDose' | 'temperature' | 'humidity';
+
+  const dataTypeConfig: Record<Exclude<DataTypeKey, 'all'>, {
+    label: string;
+    unit: string;
+    minLabel: string;
+    getValue: (r: any) => number;
+    isAbnormal?: (r: any) => boolean;
+  }> = {
+    doseRate: {
+      label: '剂量率',
+      unit: 'nSv/h',
+      minLabel: '剂量率范围',
+      getValue: (r) => r.doseRate,
+      isAbnormal: (r) => r.isAbnormal,
+    },
+    accumulatedDose: {
+      label: '累积剂量',
+      unit: 'mSv',
+      minLabel: '累积剂量范围',
+      getValue: (r) => r.accumulatedDose,
+    },
+    temperature: {
+      label: '温度',
+      unit: '°C',
+      minLabel: '温度范围',
+      getValue: (r) => r.temperature,
+    },
+    humidity: {
+      label: '湿度',
+      unit: '%',
+      minLabel: '湿度范围',
+      getValue: (r) => r.humidity,
+    },
+  };
+
+  const queryResults = useMemo(() => {
+    if (!hasQueried) return [];
+    return historyReadings.filter((r) => {
+      if (queryPoint !== 'all' && r.pointId !== queryPoint) return false;
+      if (queryStartDate) {
+        const startTs = new Date(queryStartDate).getTime();
+        const ts = new Date(r.timestamp).getTime();
+        if (ts < startTs) return false;
+      }
+      if (queryEndDate) {
+        const endTs = new Date(queryEndDate).getTime();
+        const ts = new Date(r.timestamp).getTime();
+        if (ts > endTs) return false;
+      }
+      if (queryMinValue || queryMaxValue) {
+        let val: number;
+        if (queryDataType === 'all' || queryDataType === 'doseRate') val = r.doseRate;
+        else if (queryDataType === 'accumulatedDose') val = r.accumulatedDose;
+        else if (queryDataType === 'temperature') val = r.temperature;
+        else if (queryDataType === 'humidity') val = r.humidity;
+        else val = r.doseRate;
+        if (queryMinValue && val < parseFloat(queryMinValue)) return false;
+        if (queryMaxValue && val > parseFloat(queryMaxValue)) return false;
+      }
+      return true;
+    });
+  }, [hasQueried, historyReadings, queryPoint, queryStartDate, queryEndDate, queryMinValue, queryMaxValue, queryDataType]);
+
+  const activeDataType = queryDataType !== 'all' ? queryDataType : 'doseRate';
+  const activeDataTypeInfo = dataTypeConfig[activeDataType as keyof typeof dataTypeConfig];
+  const minValueLabel = queryDataType === 'all' ? '最小值 (nSv/h)' : `${activeDataTypeInfo?.minLabel} 最小值 (${activeDataTypeInfo?.unit})`;
+  const maxValueLabel = queryDataType === 'all' ? '最大值 (nSv/h)' : `${activeDataTypeInfo?.minLabel} 最大值 (${activeDataTypeInfo?.unit})`;
 
   return (
     <div className="space-y-6">
@@ -353,11 +415,11 @@ export default function Reports() {
                     </Select>
                   </div>
                   <div className="space-y-2">
-                    <label className="text-sm text-[var(--color-text-secondary)]">最小值 (nSv/h)</label>
+                    <label className="text-sm text-[var(--color-text-secondary)]">{minValueLabel}</label>
                     <Input type="number" placeholder="最小值" value={queryMinValue} onChange={(e) => setQueryMinValue(e.target.value)} />
                   </div>
                   <div className="space-y-2">
-                    <label className="text-sm text-[var(--color-text-secondary)]">最大值 (nSv/h)</label>
+                    <label className="text-sm text-[var(--color-text-secondary)]">{maxValueLabel}</label>
                     <Input type="number" placeholder="最大值" value={queryMaxValue} onChange={(e) => setQueryMaxValue(e.target.value)} />
                   </div>
                 </div>
@@ -410,34 +472,51 @@ export default function Reports() {
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {queryResults.map((reading) => (
-                          <TableRow key={reading.id}>
-                            <TableCell className="text-[var(--color-text-secondary)]">{reading.timestamp}</TableCell>
-                            <TableCell className="font-medium">{reading.pointName}</TableCell>
-                            <TableCell className={reading.isAbnormal ? 'text-[var(--color-accent-danger)] font-medium' : ''}>
-                              {reading.doseRate} {reading.unit}
-                            </TableCell>
-                            <TableCell>{reading.accumulatedDose} mSv</TableCell>
-                            <TableCell>{reading.temperature}°C</TableCell>
-                            <TableCell>{reading.humidity}%</TableCell>
-                            <TableCell>
-                              {reading.isAbnormal ? (
-                                <Badge variant="danger">异常</Badge>
-                              ) : (
-                                <Badge variant="success">正常</Badge>
-                              )}
-                            </TableCell>
-                            <TableCell>
-                              {reading.alertLevel === 'normal' ? (
-                                <span className="text-[var(--color-text-muted)]">-</span>
-                              ) : (
-                                <Badge variant={reading.alertLevel === 'emergency' ? 'danger' : reading.alertLevel === 'severe' ? 'notice' : reading.alertLevel === 'warning' ? 'warning' : 'primary'}>
-                                  {reading.alertLevel}
-                                </Badge>
-                              )}
-                            </TableCell>
-                          </TableRow>
-                        ))}
+                        {queryResults.map((reading) => {
+                          const minVal = queryMinValue ? parseFloat(queryMinValue) : null;
+                          const maxVal = queryMaxValue ? parseFloat(queryMaxValue) : null;
+                          const checkOutOfRange = (v: number) => (minVal !== null && v < minVal) || (maxVal !== null && v > maxVal);
+                          const getCellClass = (v: number, dataType: string) => {
+                            const base = queryDataType === dataType ? 'bg-[var(--color-accent-primary)]/10 font-medium' : '';
+                            const checkRange = (queryDataType === dataType || queryDataType === 'all' && dataType === 'doseRate');
+                            const outOfRange = checkRange && checkOutOfRange(v);
+                            return `${base} ${outOfRange ? 'text-[var(--color-accent-danger)]' : ''}`.trim();
+                          };
+                          return (
+                            <TableRow key={reading.id}>
+                              <TableCell className="text-[var(--color-text-secondary)]">{reading.timestamp}</TableCell>
+                              <TableCell className="font-medium">{reading.pointName}</TableCell>
+                              <TableCell className={getCellClass(reading.doseRate, 'doseRate')}>
+                                {reading.doseRate} {reading.unit}
+                              </TableCell>
+                              <TableCell className={getCellClass(reading.accumulatedDose, 'accumulatedDose')}>
+                                {reading.accumulatedDose} mSv
+                              </TableCell>
+                              <TableCell className={getCellClass(reading.temperature, 'temperature')}>
+                                {reading.temperature}°C
+                              </TableCell>
+                              <TableCell className={getCellClass(reading.humidity, 'humidity')}>
+                                {reading.humidity}%
+                              </TableCell>
+                              <TableCell>
+                                {reading.isAbnormal ? (
+                                  <Badge variant="danger">异常</Badge>
+                                ) : (
+                                  <Badge variant="success">正常</Badge>
+                                )}
+                              </TableCell>
+                              <TableCell>
+                                {reading.alertLevel === 'normal' ? (
+                                  <span className="text-[var(--color-text-muted)]">-</span>
+                                ) : (
+                                  <Badge variant={reading.alertLevel === 'emergency' ? 'danger' : reading.alertLevel === 'severe' ? 'notice' : reading.alertLevel === 'warning' ? 'warning' : 'primary'}>
+                                    {reading.alertLevel === 'notice' ? '提示' : reading.alertLevel === 'warning' ? '警告' : reading.alertLevel === 'severe' ? '严重' : reading.alertLevel === 'emergency' ? '紧急' : reading.alertLevel}
+                                  </Badge>
+                                )}
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })}
                       </TableBody>
                     </Table>
                   ) : (

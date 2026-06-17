@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import ReactECharts from 'echarts-for-react';
 import { Card, CardContent, CardHeader, CardTitle, Badge, Button, Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui';
 import { AlertTriangle, Users, Activity, MapPin, Clock, CheckCircle2, Circle, CircleDot, ChevronRight, AlertOctagon, User, FileText } from 'lucide-react';
@@ -22,12 +22,24 @@ const stepStatusConfig: Record<EmergencyStep['status'], { label: string; variant
 export default function Emergency() {
   const emergencyRecords = useMonitorStore((state) => state.emergencyRecords);
   const updateEmergencyStep = useMonitorStore((state) => state.updateEmergencyStep);
-  const [selectedRecord, setSelectedRecord] = useState<EmergencyRecord>(emergencyRecords[0]);
+  const [selectedRecordId, setSelectedRecordId] = useState<string>(emergencyRecords[0]?.id || '');
 
-  const activeRecords = emergencyRecords.filter((r) => r.status === 'active');
-  const historyRecords = emergencyRecords.filter((r) => r.status !== 'active');
+  const activeRecords = useMemo(() => emergencyRecords.filter((r) => r.status === 'active'), [emergencyRecords]);
+  const historyRecords = useMemo(() => emergencyRecords.filter((r) => r.status !== 'active'), [emergencyRecords]);
+
+  const selectedRecord = useMemo(
+    () => emergencyRecords.find((r) => r.id === selectedRecordId) || activeRecords[0] || emergencyRecords[0],
+    [emergencyRecords, selectedRecordId, activeRecords]
+  );
+
+  useEffect(() => {
+    if (!selectedRecordId && emergencyRecords[0]) {
+      setSelectedRecordId(emergencyRecords[0].id);
+    }
+  }, [emergencyRecords, selectedRecordId]);
 
   const handleStepClick = (stepId: string) => {
+    if (!selectedRecord) return;
     const step = selectedRecord.steps.find((s) => s.id === stepId);
     if (!step) return;
     if (step.status === 'pending') {
@@ -114,9 +126,9 @@ export default function Emergency() {
                 {activeRecords.map((record) => (
                   <div
                     key={record.id}
-                    onClick={() => setSelectedRecord(record)}
+                    onClick={() => setSelectedRecordId(record.id)}
                     className={`p-4 rounded-lg border cursor-pointer transition-all ${
-                      selectedRecord.id === record.id
+                      selectedRecord?.id === record.id
                         ? 'border-[var(--color-accent-primary)] bg-[var(--color-bg-tertiary)]'
                         : 'border-[var(--color-border)] hover:border-[var(--color-text-muted)]'
                     }`}

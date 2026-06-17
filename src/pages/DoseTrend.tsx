@@ -93,7 +93,7 @@ export default function DoseTrend() {
     },
     yAxis: {
       type: 'value',
-      name: dataType === 'cumulative' ? '累积剂量 (mSv)' : '剂量率 (μSv/h)',
+      name: dataType === 'cumulative' ? '累积剂量 (mSv)' : '剂量率 (nSv/h)',
       nameTextStyle: { color: '#9ca3af' },
       axisLine: { lineStyle: { color: '#4b5563' } },
       axisLabel: { color: '#9ca3af' },
@@ -211,7 +211,7 @@ export default function DoseTrend() {
         data: [
           {
             value: radarData.values,
-            name: '本底值 (μSv/h)',
+            name: '本底值 (nSv/h)',
             lineStyle: { color: '#22d3ee', width: 2 },
             itemStyle: { color: '#22d3ee' },
             areaStyle: {

@@ -155,16 +155,23 @@ export default function MonitoringPoints() {
                   icon={createColoredIcon(statusColors[point.status])}
                 >
                   <Popup>
-                    <div className="text-gray-900 min-w-[220px]">
+                    <div className="text-gray-900 min-w-[240px]">
                       <h4 className="font-bold text-base mb-2">{point.name}</h4>
-                      <div className="space-y-1 text-sm">
+                      <div className="space-y-1.5 text-sm">
                         <p><span className="text-gray-500">编号：</span>{point.code}</p>
+                        <p><span className="text-gray-500">区域：</span>{point.location.district}</p>
                         <p><span className="text-gray-500">地址：</span>{point.location.address}</p>
                         <p><span className="text-gray-500">设备型号：</span>{point.device.model}</p>
                         <p><span className="text-gray-500">当前剂量率：</span>
                           <span className="font-mono font-semibold text-cyan-600">
                             {realtime ? `${realtime.doseRate} ${realtime.unit}` : '--'}
                           </span>
+                        </p>
+                        <p><span className="text-gray-500">本底值：</span>
+                          <span className="font-mono">{point.backgroundValue} nSv/h</span>
+                        </p>
+                        <p><span className="text-gray-500">最近校准：</span>
+                          {dayjs(point.lastCalibrationDate).format('YYYY-MM-DD')}
                         </p>
                         <p><span className="text-gray-500">状态：</span>{statusLabels[point.status]}</p>
                         <p className="flex items-center gap-1">
@@ -221,7 +228,7 @@ export default function MonitoringPoints() {
                         <span>{point.signalStrength}%</span>
                       </div>
                     </td>
-                    <td className="py-3 px-5 text-gray-300 font-mono">{point.backgroundValue} μSv/h</td>
+                    <td className="py-3 px-5 text-gray-300 font-mono">{point.backgroundValue} nSv/h</td>
                     <td className="py-3 px-5 text-gray-300 text-sm">
                       {dayjs(point.lastCalibrationDate).format('YYYY-MM-DD')}
                     </td>

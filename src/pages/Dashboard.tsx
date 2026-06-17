@@ -112,7 +112,7 @@ export default function Dashboard() {
       textStyle: { color: '#e5e7eb' },
       formatter: (params: any) => {
         const p = params[0];
-        return `${dayjs(p.value[0]).format('HH:mm')}<br/>剂量率: <b>${p.value[1]} μSv/h</b>`;
+        return `${dayjs(p.value[0]).format('HH:mm')}<br/>剂量率: <b>${p.value[1]} nSv/h</b>`;
       },
     },
     xAxis: {
@@ -123,7 +123,7 @@ export default function Dashboard() {
     },
     yAxis: {
       type: 'value',
-      name: 'μSv/h',
+      name: 'nSv/h',
       nameTextStyle: { color: '#9ca3af' },
       axisLine: { lineStyle: { color: '#4b5563' } },
       axisLabel: { color: '#9ca3af' },
@@ -212,8 +212,8 @@ export default function Dashboard() {
         <StatCard
           icon={Activity}
           label="当前平均剂量率"
-          value={`${stats.avgDoseRate} μSv/h`}
-          subValue="正常范围: 0.05 ~ 0.30"
+          value={`${stats.avgDoseRate} nSv/h`}
+          subValue="正常范围: 50 ~ 300 nSv/h"
           color="bg-green-500/20"
         />
         <StatCard
@@ -236,7 +236,7 @@ export default function Dashboard() {
         <div className="lg:col-span-2 bg-gray-800/60 backdrop-blur rounded-xl p-5 border border-gray-700/50">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-lg font-semibold">最近24小时剂量率趋势</h3>
-            <span className="text-sm text-gray-400">单位: μSv/h</span>
+            <span className="text-sm text-gray-400">单位: nSv/h</span>
           </div>
           <ReactECharts option={trendOption} style={{ height: 300 }} />
         </div>
