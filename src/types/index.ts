@@ -124,6 +124,8 @@ export interface MonitorReport {
     unit: string;
     level: string;
   }[];
+  riskAssessment?: string;
+  recommendations?: string[];
 }
 
 export interface PersonnelDose {

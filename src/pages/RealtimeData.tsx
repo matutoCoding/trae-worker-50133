@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import ReactECharts from 'echarts-for-react';
 import { Thermometer, Droplets, Activity, Clock, AlertTriangle } from 'lucide-react';
 import { useMonitorStore } from '@/store/useMonitorStore';
@@ -97,6 +97,8 @@ export default function RealtimeData() {
   } = useMonitorStore();
 
   const [, setTick] = useState(0);
+  const abnormalListRef = useRef<HTMLDivElement>(null);
+  const abnormalItemRefs = useRef<Map<string, HTMLDivElement>>(new Map());
 
   useEffect(() => {
     if (monitoringPoints.length > 0 && !selectedPointId) {
@@ -111,6 +113,24 @@ export default function RealtimeData() {
     }, 5000);
     return () => clearInterval(timer);
   }, []);
+
+  useEffect(() => {
+    if (selectedPointId) {
+      const el = abnormalItemRefs.current.get(selectedPointId);
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }
+    }
+  }, [selectedPointId]);
+
+  const handleChartClick = useCallback((params: any) => {
+    if (params?.data && params.data[2] && selectedPointId) {
+      const el = abnormalItemRefs.current.get(selectedPointId);
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }
+    }
+  }, [selectedPointId]);
 
   const selectedPoint = selectedPointId ? getPointById(selectedPointId) : null;
   const selectedRealtime = selectedPointId ? getCurrentReadingByPointId(selectedPointId) : null;
@@ -305,7 +325,7 @@ export default function RealtimeData() {
               </div>
 
               <p className="text-sm text-gray-400 mb-2">近24小时趋势</p>
-              <ReactECharts option={miniTrendOption} style={{ height: 200 }} />
+              <ReactECharts option={miniTrendOption} style={{ height: 200 }} onEvents={{ click: handleChartClick }} />
             </>
           ) : (
             <div className="flex items-center justify-center h-64 text-gray-500">
@@ -324,8 +344,9 @@ export default function RealtimeData() {
               abnormalData.map(item => (
                 <div
                   key={item.pointId}
+                  ref={(el) => { if (el) abnormalItemRefs.current.set(item.pointId, el); }}
                   onClick={() => setSelectedPointId(item.pointId)}
-                  className={`p-3 rounded-lg border cursor-pointer transition-all hover:scale-[1.01] ${alertLevelBgColors[item.alertLevel]}`}
+                  className={`p-3 rounded-lg border cursor-pointer transition-all hover:scale-[1.01] ${alertLevelBgColors[item.alertLevel]} ${selectedPointId === item.pointId ? 'ring-2 ring-cyan-400' : ''}`}
                 >
                   <div className="flex items-start justify-between mb-1">
                     <span className="text-white text-sm font-medium">{item.point?.name}</span>
@@ -351,8 +372,9 @@ export default function RealtimeData() {
             {activeAlerts.map(alert => (
               <div
                 key={alert.id}
+                ref={(el) => { if (el) abnormalItemRefs.current.set(alert.pointId, el); }}
                 onClick={() => setSelectedPointId(alert.pointId)}
-                className={`p-3 rounded-lg border cursor-pointer transition-all hover:scale-[1.01] ${alertLevelBgColors[alert.level]}`}
+                className={`p-3 rounded-lg border cursor-pointer transition-all hover:scale-[1.01] ${alertLevelBgColors[alert.level]} ${selectedPointId === alert.pointId ? 'ring-2 ring-cyan-400' : ''}`}
               >
                 <div className="flex items-start justify-between mb-1">
                   <span className="text-white text-sm font-medium">{alert.pointName}</span>

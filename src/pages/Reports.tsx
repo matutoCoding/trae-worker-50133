@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, Badge, Button, Tabs, TabsList, TabsTrigger, TabsContent, Table, TableHeader, TableBody, TableRow, TableHead, TableCell, Input, Select, Progress } from '@/components/ui';
-import { FileText, Users, Search, Calendar, Eye, Download, FileType2, ChevronRight, Plus, AlertTriangle, Filter, Download as DownloadIcon, X, FileCheck, CheckCircle2 } from 'lucide-react';
+import { FileText, Users, Search, Calendar, Eye, Download, FileType2, ChevronRight, Plus, AlertTriangle, Filter, Download as DownloadIcon, X, FileCheck, CheckCircle2, ChevronDown, ChevronUp, Shield, Lightbulb } from 'lucide-react';
 import { useMonitorStore } from '@/store/useMonitorStore';
 import type { ReportType, MonitorReport } from '@/types';
 import dayjs from 'dayjs';
@@ -35,6 +35,29 @@ export default function Reports() {
   const [hasQueried, setHasQueried] = useState(false);
   const [isGeneratingCustom, setIsGeneratingCustom] = useState(false);
   const [previewReport, setPreviewReport] = useState<MonitorReport | null>(null);
+  const [abnormalGroupBy, setAbnormalGroupBy] = useState<'point' | 'level'>('point');
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
+  const [confirmExport, setConfirmExport] = useState<'pdf' | 'word' | null>(null);
+
+  const toggleGroup = (key: string) => {
+    setCollapsedGroups(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
+
+  const groupedAbnormalRecords = useMemo(() => {
+    if (!previewReport?.abnormalRecords) return {};
+    const groups: Record<string, typeof previewReport.abnormalRecords> = {};
+    previewReport.abnormalRecords.forEach(r => {
+      const key = abnormalGroupBy === 'point' ? r.pointName : r.level;
+      if (!groups[key]) groups[key] = [];
+      groups[key].push(r);
+    });
+    return groups;
+  }, [previewReport, abnormalGroupBy]);
 
   const handleGenerateReport = () => {
     if (!startDate || !endDate) return;
@@ -180,6 +203,28 @@ export default function Reports() {
           maxValue: queryMaxValue ? parseFloat(queryMaxValue) : undefined,
         },
         abnormalRecords,
+        riskAssessment: (() => {
+          const avg = doseRateValues.reduce((s, v) => s + v, 0) / doseRateValues.length;
+          const max = Math.max(...doseRateValues);
+          const ratio = max / 300;
+          if (abnormalRecords.length === 0) return '本时段内各监测点剂量率均在正常范围内，未发现异常辐射水平，环境辐射状况总体安全。';
+          if (ratio > 3) return `监测数据中存在${abnormalRecords.length}条异常记录，最高剂量率达${max.toFixed(1)} nSv/h，为正常阈值的${ratio.toFixed(1)}倍，存在显著辐射风险，需重点关注。`;
+          if (ratio > 1.5) return `监测数据中存在${abnormalRecords.length}条异常记录，最高剂量率${max.toFixed(1)} nSv/h超出正常阈值，辐射风险中等，建议持续跟踪。`;
+          return `监测数据中存在${abnormalRecords.length}条轻度异常记录，剂量率略高于阈值，辐射风险较低，建议关注变化趋势。`;
+        })(),
+        recommendations: (() => {
+          const recs: string[] = [];
+          if (abnormalRecords.length > 0) {
+            recs.push('对异常监测点进行现场复测，确认数据真实性');
+            recs.push('排查周边可能的辐射来源，包括工业探伤、运输途中等');
+          }
+          recs.push('持续监测异常点位剂量率变化趋势');
+          if (abnormalRecords.some(r => r.level === 'severe' || r.level === 'emergency')) {
+            recs.push('启动应急响应预案，通知相关部门和人员');
+          }
+          recs.push('定期校准监测设备，确保数据准确性');
+          return recs;
+        })(),
       };
       addReport(newReport);
       setPreviewReport(newReport);
@@ -732,6 +777,38 @@ export default function Reports() {
                 </CardContent>
               </Card>
 
+              {previewReport.riskAssessment && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-base flex items-center gap-2">
+                      <Shield className="w-5 h-5 text-orange-400" />
+                      风险研判结论
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <p className="text-sm text-[var(--color-text-primary)] leading-relaxed">{previewReport.riskAssessment}</p>
+                  </CardContent>
+                </Card>
+              )}
+
+              {previewReport.recommendations && previewReport.recommendations.length > 0 && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-base flex items-center gap-2">
+                      <Lightbulb className="w-5 h-5 text-yellow-400" />
+                      处置建议
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <ol className="list-decimal list-inside space-y-2 text-sm text-[var(--color-text-primary)]">
+                      {previewReport.recommendations.map((rec, i) => (
+                        <li key={i}>{rec}</li>
+                      ))}
+                    </ol>
+                  </CardContent>
+                </Card>
+              )}
+
               {previewReport.abnormalRecords && previewReport.abnormalRecords.length > 0 && (
                 <Card>
                   <CardHeader>
@@ -739,32 +816,65 @@ export default function Reports() {
                       <AlertTriangle className="w-5 h-5 text-red-400" />
                       异常记录 ({previewReport.abnormalRecords.length} 条)
                     </CardTitle>
+                    <div className="flex items-center gap-2 ml-auto">
+                      <span className="text-xs text-[var(--color-text-muted)]">分组:</span>
+                      <button
+                        onClick={() => { setAbnormalGroupBy('point'); setCollapsedGroups(new Set()); }}
+                        className={`text-xs px-2 py-0.5 rounded ${abnormalGroupBy === 'point' ? 'bg-[var(--color-accent-primary)]/20 text-[var(--color-accent-primary)]' : 'text-[var(--color-text-muted)] hover:text-white'}`}
+                      >按监测点</button>
+                      <button
+                        onClick={() => { setAbnormalGroupBy('level'); setCollapsedGroups(new Set()); }}
+                        className={`text-xs px-2 py-0.5 rounded ${abnormalGroupBy === 'level' ? 'bg-[var(--color-accent-primary)]/20 text-[var(--color-accent-primary)]' : 'text-[var(--color-text-muted)] hover:text-white'}`}
+                      >按预警级别</button>
+                    </div>
                   </CardHeader>
                   <CardContent>
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>时间</TableHead>
-                          <TableHead>监测点</TableHead>
-                          <TableHead>剂量率</TableHead>
-                          <TableHead>预警级别</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {previewReport.abnormalRecords.map(r => (
-                          <TableRow key={r.id}>
-                            <TableCell className="text-[var(--color-text-secondary)] text-sm">{dayjs(r.time).format('YYYY-MM-DD HH:mm:ss')}</TableCell>
-                            <TableCell className="font-medium">{r.pointName}</TableCell>
-                            <TableCell className="font-mono text-red-400">{r.value} {r.unit}</TableCell>
-                            <TableCell>
-                              <Badge variant={r.level === 'emergency' || r.level === 'severe' ? 'danger' : r.level === 'warning' ? 'warning' : 'primary'}>
-                                {r.level === 'notice' ? '提示' : r.level === 'warning' ? '警告' : r.level === 'severe' ? '严重' : r.level === 'emergency' ? '紧急' : r.level}
-                              </Badge>
-                            </TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
+                    {Object.entries(groupedAbnormalRecords).map(([groupKey, records]) => {
+                      const isCollapsed = collapsedGroups.has(groupKey);
+                      const levelLabel = ['notice','warning','severe','emergency'].includes(groupKey)
+                        ? (groupKey === 'notice' ? '提示' : groupKey === 'warning' ? '警告' : groupKey === 'severe' ? '严重' : '紧急')
+                        : groupKey;
+                      return (
+                        <div key={groupKey} className="mb-3">
+                          <div
+                            onClick={() => toggleGroup(groupKey)}
+                            className="flex items-center gap-2 p-2 rounded-md bg-[var(--color-bg-tertiary)] cursor-pointer hover:bg-[var(--color-bg-tertiary)]/80"
+                          >
+                            {isCollapsed ? <ChevronRight className="w-4 h-4 text-[var(--color-text-muted)]" /> : <ChevronDown className="w-4 h-4 text-[var(--color-text-muted)]" />}
+                            <span className="text-sm font-medium text-[var(--color-text-primary)]">{levelLabel}</span>
+                            <Badge variant="default" className="text-xs">{records.length} 条</Badge>
+                          </div>
+                          {!isCollapsed && (
+                            <Table>
+                              <TableHeader>
+                                <TableRow>
+                                  <TableHead>时间</TableHead>
+                                  {abnormalGroupBy === 'level' && <TableHead>监测点</TableHead>}
+                                  <TableHead>剂量率</TableHead>
+                                  {abnormalGroupBy === 'point' && <TableHead>预警级别</TableHead>}
+                                </TableRow>
+                              </TableHeader>
+                              <TableBody>
+                                {records.map(r => (
+                                  <TableRow key={r.id}>
+                                    <TableCell className="text-[var(--color-text-secondary)] text-sm">{dayjs(r.time).format('YYYY-MM-DD HH:mm:ss')}</TableCell>
+                                    {abnormalGroupBy === 'level' && <TableCell className="font-medium">{r.pointName}</TableCell>}
+                                    <TableCell className="font-mono text-red-400">{r.value} {r.unit}</TableCell>
+                                    {abnormalGroupBy === 'point' && (
+                                      <TableCell>
+                                        <Badge variant={r.level === 'emergency' || r.level === 'severe' ? 'danger' : r.level === 'warning' ? 'warning' : 'primary'}>
+                                          {r.level === 'notice' ? '提示' : r.level === 'warning' ? '警告' : r.level === 'severe' ? '严重' : r.level === 'emergency' ? '紧急' : r.level}
+                                        </Badge>
+                                      </TableCell>
+                                    )}
+                                  </TableRow>
+                                ))}
+                              </TableBody>
+                            </Table>
+                          )}
+                        </div>
+                      );
+                    })}
                   </CardContent>
                 </Card>
               )}
@@ -780,8 +890,37 @@ export default function Reports() {
             </div>
             <div className="flex items-center justify-end gap-2 p-5 border-t border-gray-700">
               <Button variant="secondary" onClick={() => setPreviewReport(null)}>关闭</Button>
-              <Button variant="ghost"><Download className="w-4 h-4" />导出 PDF</Button>
-              <Button variant="ghost"><Download className="w-4 h-4" />导出 Word</Button>
+              <Button variant="ghost" onClick={() => setConfirmExport('pdf')}><Download className="w-4 h-4" />导出 PDF</Button>
+              <Button variant="ghost" onClick={() => setConfirmExport('word')}><Download className="w-4 h-4" />导出 Word</Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {confirmExport && previewReport && (
+        <div className="fixed inset-0 bg-black/60 z-[60] flex items-center justify-center p-4 backdrop-blur-sm">
+          <div className="bg-gray-900 border border-gray-700 rounded-xl w-full max-w-md overflow-hidden">
+            <div className="p-5 border-b border-gray-700">
+              <h3 className="text-lg font-bold text-white">确认导出</h3>
+            </div>
+            <div className="p-5 space-y-3 text-sm text-[var(--color-text-primary)]">
+              <p>确认导出以下报告为 <Badge variant="primary">{confirmExport === 'pdf' ? 'PDF' : 'Word'}</Badge> 格式？</p>
+              <div className="p-3 rounded-md bg-[var(--color-bg-tertiary)] space-y-1 text-xs text-[var(--color-text-secondary)]">
+                <p><span className="text-[var(--color-text-muted)]">标题:</span> {previewReport.title}</p>
+                <p><span className="text-[var(--color-text-muted)]">范围:</span> {previewReport.startDate} ~ {previewReport.endDate}</p>
+                <p><span className="text-[var(--color-text-muted)]">数据量:</span> {previewReport.summary.totalReadings} 条读数 / {previewReport.summary.abnormalCount} 条异常</p>
+                {previewReport.riskAssessment && <p><span className="text-[var(--color-text-muted)]">风险研判:</span> {previewReport.riskAssessment.slice(0, 60)}...</p>}
+              </div>
+            </div>
+            <div className="flex items-center justify-end gap-2 p-5 border-t border-gray-700">
+              <Button variant="secondary" onClick={() => setConfirmExport(null)}>取消</Button>
+              <Button onClick={() => {
+                setConfirmExport(null);
+                setPreviewReport(null);
+              }}>
+                <Download className="w-4 h-4" />
+                确认导出
+              </Button>
             </div>
           </div>
         </div>

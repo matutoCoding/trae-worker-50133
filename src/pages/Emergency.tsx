@@ -53,27 +53,37 @@ export default function Emergency() {
 
   const stepTimeline = useMemo(() => {
     if (!selectedRecord) return [];
-    return selectedRecord.steps.map((step, idx) => {
+    const eventStart = new Date(selectedRecord.startTime).getTime();
+    const eventEnd = selectedRecord.endTime ? new Date(selectedRecord.endTime).getTime() : Date.now();
+    const totalMs = eventEnd - eventStart;
+    const stepsWithDuration = selectedRecord.steps.map((step, idx) => {
       const prevStep = idx > 0 ? selectedRecord.steps[idx - 1] : null;
-      const prevTime = prevStep?.completedAt
+      const rawPrevTime = prevStep?.completedAt
         ? new Date(prevStep.completedAt).getTime()
-        : new Date(selectedRecord.startTime).getTime();
-      const thisTime = step.completedAt
+        : eventStart;
+      const prevTime = Math.max(rawPrevTime, eventStart);
+      const rawThisTime = step.completedAt
         ? new Date(step.completedAt).getTime()
         : step.status === 'in_progress'
         ? Date.now()
         : null;
-      const stepDuration = thisTime ? formatDuration(thisTime - prevTime) : null;
+      const thisTime = rawThisTime ? Math.max(rawThisTime, prevTime) : null;
+      const stepDurationMs = thisTime ? thisTime - prevTime : 0;
+      const stepDuration = stepDurationMs > 0 ? formatDuration(stepDurationMs) : null;
+      const durationPercent = totalMs > 0 && stepDurationMs > 0 ? Number(((stepDurationMs / totalMs) * 100).toFixed(1)) : 0;
       return {
         ...step,
         stepDuration,
+        stepDurationMs,
+        durationPercent,
         actualTime: step.completedAt
-          ? dayjs(step.completedAt).format('YYYY-MM-DD HH:mm:ss')
+          ? dayjs(new Date(Math.max(new Date(step.completedAt).getTime(), eventStart))).format('YYYY-MM-DD HH:mm:ss')
           : step.status === 'in_progress'
           ? '进行中...'
           : null,
       };
     });
+    return stepsWithDuration;
   }, [selectedRecord, totalDuration]);
 
   useEffect(() => {
@@ -310,6 +320,18 @@ export default function Emergency() {
                                   本步骤耗时: {stepTimeline[index]?.stepDuration}
                                 </span>
                               )}
+                            </div>
+                          )}
+                          {selectedRecord?.status !== 'active' && stepTimeline[index]?.durationPercent > 0 && (
+                            <div className="mt-2 flex items-center gap-2 text-xs text-[var(--color-text-muted)]">
+                              <span>用时占比</span>
+                              <div className="flex-1 h-1.5 rounded-full bg-[var(--color-bg-primary)] overflow-hidden max-w-[200px]">
+                                <div
+                                  className={`h-full rounded-full transition-all ${stepTimeline[index].durationPercent > 40 ? 'bg-red-500' : stepTimeline[index].durationPercent > 25 ? 'bg-yellow-500' : 'bg-green-500'}`}
+                                  style={{ width: `${stepTimeline[index].durationPercent}%` }}
+                                />
+                              </div>
+                              <span className="font-mono">{stepTimeline[index].durationPercent}%</span>
                             </div>
                           )}
                         </div>
