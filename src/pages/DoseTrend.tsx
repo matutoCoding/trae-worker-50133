@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import ReactECharts from 'echarts-for-react';
-import { Calendar, MapPin, BarChart3, Check } from 'lucide-react';
+import { Calendar, MapPin, BarChart3, Check, TrendingUp, TrendingDown, Minus, Activity, AlertTriangle, Gauge } from 'lucide-react';
 import { useMonitorStore } from '@/store/useMonitorStore';
 import dayjs from 'dayjs';
 
@@ -121,6 +121,30 @@ export default function DoseTrend() {
     })),
   };
 
+  const dataTypeLabel = dataType === 'cumulative' ? '累积剂量' : '瞬时剂量率';
+  const dataTypeUnit = dataType === 'cumulative' ? 'mSv' : 'nSv/h';
+  const threshold = dataType === 'cumulative' ? 5 : 300;
+
+  const comparisonStats = useMemo(() => {
+    return selectedTrendData.map(d => {
+      const values = d.data.map(p => p.value);
+      const peak = values.length > 0 ? Math.max(...values) : 0;
+      const avg = values.length > 0 ? values.reduce((a, b) => a + b, 0) / values.length : 0;
+      const overThresholdCount = values.filter(v => v > threshold).length;
+      const first = values.length > 0 ? values[0] : 0;
+      const last = values.length > 0 ? values[values.length - 1] : 0;
+      const changePct = first > 0 ? ((last - first) / first) * 100 : 0;
+      return {
+        pointId: d.pointId,
+        pointName: d.pointName,
+        peak: Number(peak.toFixed(2)),
+        avg: Number(avg.toFixed(2)),
+        overThresholdCount,
+        changePct: Number(changePct.toFixed(1)),
+      };
+    }).sort((a, b) => b.peak - a.peak);
+  }, [selectedTrendData, dataType, threshold]);
+
   const rankingData = useMemo(() => {
     return doseTrendData
       .map(d => ({
@@ -141,11 +165,13 @@ export default function DoseTrend() {
       textStyle: { color: '#e5e7eb' },
       formatter: (params: any) => {
         const p = params[0];
-        return `${p.name}<br/>累积剂量: <b>${p.value} mSv</b>`;
+        return `${p.name}<br/>${dataTypeLabel}: <b>${p.value} ${dataTypeUnit}</b>`;
       },
     },
     xAxis: {
       type: 'value',
+      name: dataTypeUnit,
+      nameTextStyle: { color: '#9ca3af' },
       axisLine: { lineStyle: { color: '#4b5563' } },
       axisLabel: { color: '#9ca3af' },
       splitLine: { lineStyle: { color: '#374151', type: 'dashed' } },
@@ -312,9 +338,9 @@ export default function DoseTrend() {
 
       <div className="bg-gray-800/60 backdrop-blur rounded-xl p-5 border border-gray-700/50 mb-6">
         <h3 className="text-lg font-semibold mb-4">
-          累积剂量趋势
+          {dataTypeLabel}趋势
           <span className="text-sm font-normal text-gray-400 ml-3">
-            {selectedTrendData.length} 个监测点
+            {selectedTrendData.length} 个监测点 · 单位: {dataTypeUnit}
           </span>
         </h3>
         {selectedTrendData.length > 0 ? (
@@ -326,9 +352,79 @@ export default function DoseTrend() {
         )}
       </div>
 
+      {selectedTrendData.length > 0 && (
+        <div className="bg-gray-800/60 backdrop-blur rounded-xl p-5 border border-gray-700/50 mb-6">
+          <h3 className="text-lg font-semibold mb-4">
+            站点对比分析
+            <span className="text-sm font-normal text-gray-400 ml-3">
+              基于 {dataTypeLabel} ({dataTypeUnit})
+            </span>
+          </h3>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+            {comparisonStats.map((stat, idx) => {
+              const TrendIcon = stat.changePct > 0 ? TrendingUp : stat.changePct < 0 ? TrendingDown : Minus;
+              const trendColor = stat.changePct > 0 ? 'text-red-400' : stat.changePct < 0 ? 'text-green-400' : 'text-gray-400';
+              return (
+                <div
+                  key={stat.pointId}
+                  className="bg-gray-900/50 rounded-lg p-4 border border-gray-700/50 relative overflow-hidden"
+                >
+                  <div
+                    className="absolute left-0 top-0 bottom-0 w-1"
+                    style={{ backgroundColor: lineColors[idx % lineColors.length] }}
+                  />
+                  <h4 className="font-medium text-white mb-3 pl-2">{stat.pointName}</h4>
+                  <div className="space-y-3 pl-2">
+                    <div className="flex items-center justify-between">
+                      <span className="flex items-center gap-1 text-sm text-gray-400">
+                        <Gauge className="w-3.5 h-3.5" />
+                        峰值
+                      </span>
+                      <span className="font-mono font-semibold text-cyan-400">
+                        {stat.peak} {dataTypeUnit}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="flex items-center gap-1 text-sm text-gray-400">
+                        <Activity className="w-3.5 h-3.5" />
+                        均值
+                      </span>
+                      <span className="font-mono font-semibold text-gray-200">
+                        {stat.avg} {dataTypeUnit}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="flex items-center gap-1 text-sm text-gray-400">
+                        <AlertTriangle className="w-3.5 h-3.5" />
+                        超阈次数
+                      </span>
+                      <span className={`font-mono font-semibold ${stat.overThresholdCount > 0 ? 'text-yellow-400' : 'text-green-400'}`}>
+                        {stat.overThresholdCount} 次
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="flex items-center gap-1 text-sm text-gray-400">
+                        <TrendIcon className={`w-3.5 h-3.5 ${trendColor}`} />
+                        变化幅度
+                      </span>
+                      <span className={`font-mono font-semibold ${trendColor}`}>
+                        {stat.changePct > 0 ? '+' : ''}{stat.changePct}%
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <div className="bg-gray-800/60 backdrop-blur rounded-xl p-5 border border-gray-700/50">
-          <h3 className="text-lg font-semibold mb-4">剂量排名</h3>
+          <h3 className="text-lg font-semibold mb-4">
+            {dataTypeLabel}排名
+            <span className="text-sm font-normal text-gray-400 ml-2">({dataTypeUnit})</span>
+          </h3>
           <ReactECharts option={barChartOption} style={{ height: 320 }} />
         </div>
         <div className="bg-gray-800/60 backdrop-blur rounded-xl p-5 border border-gray-700/50">

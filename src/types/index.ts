@@ -102,10 +102,28 @@ export interface MonitorReport {
     abnormalCount: number;
     avgDoseRate: number;
     maxDoseRate: number;
+    minDoseRate?: number;
     pointsOnline: number;
     pointsTotal: number;
+    avgTemperature?: number;
+    avgHumidity?: number;
+    avgAccumulatedDose?: number;
   };
   status: ReportStatus;
+  filters?: {
+    pointId?: string;
+    dataType?: string;
+    minValue?: number;
+    maxValue?: number;
+  };
+  abnormalRecords?: {
+    id: string;
+    time: string;
+    pointName: string;
+    value: number;
+    unit: string;
+    level: string;
+  }[];
 }
 
 export interface PersonnelDose {

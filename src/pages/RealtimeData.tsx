@@ -115,76 +115,117 @@ export default function RealtimeData() {
   const selectedPoint = selectedPointId ? getPointById(selectedPointId) : null;
   const selectedRealtime = selectedPointId ? getCurrentReadingByPointId(selectedPointId) : null;
 
-  const hourlyTrend = useMemo(() => {
-    if (!selectedPointId) return [];
+  const trendData = useMemo(() => {
+    if (!selectedPointId) return { readings: [], abnormalPoints: [] };
     const history = getHistoryReadingsByPointId(selectedPointId);
     const now = dayjs();
     const twentyFourHoursAgo = now.subtract(24, 'hour');
-    const recentReadings = history.filter(r => 
-      dayjs(r.timestamp).isAfter(twentyFourHoursAgo)
-    );
+    const recentReadings = history
+      .filter(r => dayjs(r.timestamp).isAfter(twentyFourHoursAgo))
+      .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
 
-    const hourlyMap = new Map<string, { total: number; count: number }>();
-    
-    recentReadings.forEach(reading => {
-      const hourKey = dayjs(reading.timestamp).startOf('hour').toISOString();
-      const existing = hourlyMap.get(hourKey);
-      if (existing) {
-        existing.total += reading.doseRate;
-        existing.count += 1;
-      } else {
-        hourlyMap.set(hourKey, { total: reading.doseRate, count: 1 });
-      }
-    });
+    const abnormalPoints = recentReadings
+      .filter(r => r.isAbnormal || r.alertLevel !== 'normal')
+      .map(r => ({
+        time: r.timestamp,
+        value: r.doseRate,
+        alertLevel: r.alertLevel,
+        unit: r.unit,
+        pointId: r.pointId,
+      }));
 
-    return Array.from(hourlyMap.entries())
-      .map(([time, data]) => ({
-        time,
-        value: Number((data.total / data.count).toFixed(4)),
-      }))
-      .sort((a, b) => new Date(a.time).getTime() - new Date(b.time).getTime());
+    return { readings: recentReadings, abnormalPoints };
   }, [selectedPointId, historyReadings, getHistoryReadingsByPointId]);
 
-  const miniTrendOption = {
-    backgroundColor: 'transparent',
-    grid: { left: 35, right: 10, top: 10, bottom: 25 },
-    tooltip: {
-      trigger: 'axis',
-      backgroundColor: 'rgba(31, 41, 55, 0.95)',
-      borderColor: '#374151',
-      textStyle: { color: '#e5e7eb' },
-    },
-    xAxis: {
-      type: 'time',
-      axisLine: { lineStyle: { color: '#4b5563' } },
-      axisLabel: { color: '#9ca3af', fontSize: 10, formatter: (v: number) => dayjs(v).format('HH:mm') },
-    },
-    yAxis: {
-      type: 'value',
-      axisLine: { lineStyle: { color: '#4b5563' } },
-      axisLabel: { color: '#9ca3af', fontSize: 10 },
-      splitLine: { lineStyle: { color: '#374151', type: 'dashed' } },
-    },
-    series: [
-      {
-        type: 'line',
-        smooth: true,
-        symbol: 'none',
-        lineStyle: { color: '#22d3ee', width: 2 },
-        areaStyle: {
-          color: {
-            type: 'linear',
-            x: 0, y: 0, x2: 0, y2: 1,
-            colorStops: [
-              { offset: 0, color: 'rgba(34, 211, 238, 0.3)' },
-              { offset: 1, color: 'rgba(34, 211, 238, 0)' },
-            ],
-          },
-        },
-        data: hourlyTrend.map(p => [p.time, p.value]),
+  const miniTrendOption = useMemo(() => {
+    const markPointData = trendData.abnormalPoints.map(p => ({
+      coord: [p.time, p.value],
+      value: alertLevelLabels[p.alertLevel] || '异常',
+      itemStyle: {
+        color: p.alertLevel === 'emergency' || p.alertLevel === 'severe' ? '#ef4444'
+          : p.alertLevel === 'warning' ? '#f59e0b' : '#eab308',
       },
-    ],
-  };
+    }));
+
+    return {
+      backgroundColor: 'transparent',
+      grid: { left: 60, right: 20, top: 20, bottom: 40 },
+      tooltip: {
+        trigger: 'axis',
+        backgroundColor: 'rgba(31, 41, 55, 0.95)',
+        borderColor: '#374151',
+        textStyle: { color: '#e5e7eb' },
+        formatter: (params: any) => {
+          if (!params || params.length === 0) return '';
+          const p = params[0];
+          const isAbnormal = p.data[2];
+          const alertLabel = p.data[3];
+          return `${dayjs(p.value[0]).format('YYYY-MM-DD HH:mm')}<br/>
+                  剂量率: <b>${p.value[1]} nSv/h</b>${isAbnormal ? `<br/><span style="color:#ef4444">⚠ ${alertLabel}</span>` : ''}`;
+        },
+      },
+      xAxis: {
+        type: 'time',
+        axisLine: { lineStyle: { color: '#4b5563' } },
+        axisLabel: { color: '#9ca3af', fontSize: 11, formatter: (v: number) => dayjs(v).format('HH:mm') },
+        name: '时间',
+        nameTextStyle: { color: '#9ca3af', fontSize: 11 },
+        nameLocation: 'middle',
+        nameGap: 25,
+      },
+      yAxis: {
+        type: 'value',
+        name: 'nSv/h',
+        nameTextStyle: { color: '#9ca3af', fontSize: 11 },
+        nameLocation: 'end',
+        nameGap: 10,
+        axisLine: { lineStyle: { color: '#4b5563' } },
+        axisLabel: { color: '#9ca3af', fontSize: 11 },
+        splitLine: { lineStyle: { color: '#374151', type: 'dashed' } },
+      },
+      series: [
+        {
+          type: 'line',
+          smooth: true,
+          symbol: 'circle',
+          symbolSize: (val: number[]) => (val[2] ? 8 : 3),
+          lineStyle: { color: '#22d3ee', width: 2 },
+          itemStyle: {
+            color: (params: any) => {
+              const isAbnormal = params.data[2];
+              if (!isAbnormal) return '#22d3ee';
+              const level = params.data[3];
+              return level === 'emergency' || level === 'severe' ? '#ef4444'
+                : level === 'warning' ? '#f59e0b' : '#eab308';
+            },
+          },
+          areaStyle: {
+            color: {
+              type: 'linear',
+              x: 0, y: 0, x2: 0, y2: 1,
+              colorStops: [
+                { offset: 0, color: 'rgba(34, 211, 238, 0.35)' },
+                { offset: 1, color: 'rgba(34, 211, 238, 0.02)' },
+              ],
+            },
+          },
+          markPoint: {
+            symbol: 'pin',
+            symbolSize: 35,
+            label: { show: true, color: '#fff', fontSize: 10 },
+            data: markPointData,
+            animation: true,
+          },
+          data: trendData.readings.map(r => [
+            r.timestamp,
+            r.doseRate,
+            r.isAbnormal || r.alertLevel !== 'normal',
+            r.alertLevel,
+          ]),
+        },
+      ],
+    };
+  }, [trendData]);
 
   const abnormalData = currentReadings
     .filter(r => r.alertLevel !== 'normal')

@@ -1,9 +1,10 @@
 import { useState, useMemo, useEffect } from 'react';
 import ReactECharts from 'echarts-for-react';
 import { Card, CardContent, CardHeader, CardTitle, Badge, Button, Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui';
-import { AlertTriangle, Users, Activity, MapPin, Clock, CheckCircle2, Circle, CircleDot, ChevronRight, AlertOctagon, User, FileText } from 'lucide-react';
+import { AlertTriangle, Users, Activity, MapPin, Clock, CheckCircle2, Circle, CircleDot, ChevronRight, AlertOctagon, User, FileText, History, Timer, Zap } from 'lucide-react';
 import { useMonitorStore } from '@/store/useMonitorStore';
 import type { EmergencyRecord, EmergencyStep, AlertLevel } from '@/types';
+import dayjs from 'dayjs';
 
 const levelConfig: Record<AlertLevel, { label: string; variant: 'primary' | 'success' | 'warning' | 'danger' | 'notice' | 'default' }> = {
   normal: { label: '正常', variant: 'success' },
@@ -31,6 +32,49 @@ export default function Emergency() {
     () => emergencyRecords.find((r) => r.id === selectedRecordId) || activeRecords[0] || emergencyRecords[0],
     [emergencyRecords, selectedRecordId, activeRecords]
   );
+
+  const formatDuration = (ms: number): string => {
+    const totalMinutes = Math.floor(ms / (1000 * 60));
+    const hours = Math.floor(totalMinutes / 60);
+    const minutes = totalMinutes % 60;
+    const days = Math.floor(hours / 24);
+    const remainHours = hours % 24;
+    if (days > 0) return `${days}天${remainHours}小时${minutes}分钟`;
+    if (hours > 0) return `${hours}小时${minutes}分钟`;
+    return `${minutes}分钟`;
+  };
+
+  const totalDuration = useMemo(() => {
+    if (!selectedRecord) return '';
+    const start = new Date(selectedRecord.startTime).getTime();
+    const end = selectedRecord.endTime ? new Date(selectedRecord.endTime).getTime() : Date.now();
+    return formatDuration(end - start);
+  }, [selectedRecord]);
+
+  const stepTimeline = useMemo(() => {
+    if (!selectedRecord) return [];
+    return selectedRecord.steps.map((step, idx) => {
+      const prevStep = idx > 0 ? selectedRecord.steps[idx - 1] : null;
+      const prevTime = prevStep?.completedAt
+        ? new Date(prevStep.completedAt).getTime()
+        : new Date(selectedRecord.startTime).getTime();
+      const thisTime = step.completedAt
+        ? new Date(step.completedAt).getTime()
+        : step.status === 'in_progress'
+        ? Date.now()
+        : null;
+      const stepDuration = thisTime ? formatDuration(thisTime - prevTime) : null;
+      return {
+        ...step,
+        stepDuration,
+        actualTime: step.completedAt
+          ? dayjs(step.completedAt).format('YYYY-MM-DD HH:mm:ss')
+          : step.status === 'in_progress'
+          ? '进行中...'
+          : null,
+      };
+    });
+  }, [selectedRecord, totalDuration]);
 
   useEffect(() => {
     if (!selectedRecordId && emergencyRecords[0]) {
@@ -189,6 +233,26 @@ export default function Emergency() {
               </CardTitle>
             </CardHeader>
             <CardContent>
+              {selectedRecord && (
+                <div className="flex items-center justify-between mb-4 p-3 rounded-lg bg-[var(--color-bg-tertiary)]">
+                  <div className="flex items-center gap-6 text-sm">
+                    <span className="flex items-center gap-1.5 text-[var(--color-text-secondary)]">
+                      <Timer className="w-4 h-4 text-[var(--color-accent-primary)]" />
+                      开始时间: {dayjs(selectedRecord.startTime).format('YYYY-MM-DD HH:mm:ss')}
+                    </span>
+                    {selectedRecord.endTime && (
+                      <span className="flex items-center gap-1.5 text-[var(--color-text-secondary)]">
+                        <CheckCircle2 className="w-4 h-4 text-[var(--color-accent-success)]" />
+                        结束时间: {dayjs(selectedRecord.endTime).format('YYYY-MM-DD HH:mm:ss')}
+                      </span>
+                    )}
+                  </div>
+                  <span className="flex items-center gap-1.5 font-medium text-[var(--color-accent-primary)]">
+                    <Zap className="w-4 h-4" />
+                    整体耗时: {totalDuration}
+                  </span>
+                </div>
+              )}
               <div className="relative">
                 <div className="absolute left-[18px] top-4 bottom-4 w-0.5 bg-[var(--color-border)]" />
                 <div className="space-y-1">
@@ -227,17 +291,23 @@ export default function Emergency() {
                             <p className="text-sm text-[var(--color-text-secondary)] mb-1">{step.description}</p>
                           )}
                           {(step.operator || step.completedAt) && (
-                            <div className="flex gap-4 text-xs text-[var(--color-text-muted)]">
+                            <div className="flex flex-wrap gap-4 text-xs text-[var(--color-text-muted)]">
                               {step.operator && (
                                 <span className="flex items-center gap-1">
                                   <User className="w-3 h-3" />
-                                  {step.operator}
+                                  操作人: {step.operator}
                                 </span>
                               )}
-                              {step.completedAt && (
+                              {stepTimeline[index]?.actualTime && (
                                 <span className="flex items-center gap-1">
                                   <Clock className="w-3 h-3" />
-                                  {step.completedAt}
+                                  {stepTimeline[index]?.actualTime}
+                                </span>
+                              )}
+                              {stepTimeline[index]?.stepDuration && (
+                                <span className="flex items-center gap-1">
+                                  <History className="w-3 h-3" />
+                                  本步骤耗时: {stepTimeline[index]?.stepDuration}
                                 </span>
                               )}
                             </div>
@@ -334,22 +404,37 @@ export default function Emergency() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {historyRecords.map((record) => (
-                <TableRow key={record.id}>
-                  <TableCell className="font-medium">{record.title}</TableCell>
-                  <TableCell>
-                    <Badge variant={levelConfig[record.level].variant}>{levelConfig[record.level].label}</Badge>
-                  </TableCell>
-                  <TableCell className="text-[var(--color-text-secondary)]">{record.startTime}</TableCell>
-                  <TableCell className="text-[var(--color-text-secondary)]">{record.endTime}</TableCell>
-                  <TableCell>{record.handler}</TableCell>
-                  <TableCell className="text-[var(--color-text-secondary)]">3小时35分钟</TableCell>
-                  <TableCell className="text-[var(--color-text-secondary)] max-w-[200px] truncate">{record.traceability}</TableCell>
-                  <TableCell>
-                    <Badge variant="success">已完成</Badge>
-                  </TableCell>
-                </TableRow>
-              ))}
+              {historyRecords.map((record) => {
+                const start = new Date(record.startTime).getTime();
+                const end = record.endTime ? new Date(record.endTime).getTime() : start;
+                const dur = formatDuration(end - start);
+                const isSelected = selectedRecordId === record.id;
+                return (
+                  <TableRow
+                    key={record.id}
+                    onClick={() => setSelectedRecordId(record.id)}
+                    className={`cursor-pointer transition-colors ${isSelected ? 'bg-[var(--color-accent-primary)]/10' : 'hover:bg-[var(--color-bg-tertiary)]'}`}
+                  >
+                    <TableCell className="font-medium">
+                      <div className="flex items-center gap-2">
+                        {isSelected && <ChevronRight className="w-4 h-4 text-[var(--color-accent-primary)]" />}
+                        {record.title}
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant={levelConfig[record.level].variant}>{levelConfig[record.level].label}</Badge>
+                    </TableCell>
+                    <TableCell className="text-[var(--color-text-secondary)]">{dayjs(record.startTime).format('YYYY-MM-DD HH:mm')}</TableCell>
+                    <TableCell className="text-[var(--color-text-secondary)]">{record.endTime ? dayjs(record.endTime).format('YYYY-MM-DD HH:mm') : '-'}</TableCell>
+                    <TableCell>{record.handler || record.commander}</TableCell>
+                    <TableCell className="text-[var(--color-text-secondary)]">{dur}</TableCell>
+                    <TableCell className="text-[var(--color-text-secondary)] max-w-[200px] truncate">{record.traceability || record.summary}</TableCell>
+                    <TableCell>
+                      <Badge variant="success">已完成</Badge>
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
               {historyRecords.length === 0 && (
                 <TableRow>
                   <TableCell colSpan={8} className="text-center py-8 text-[var(--color-text-secondary)]">

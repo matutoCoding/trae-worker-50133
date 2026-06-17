@@ -1,8 +1,9 @@
 import { useState, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, Badge, Button, Tabs, TabsList, TabsTrigger, TabsContent, Table, TableHeader, TableBody, TableRow, TableHead, TableCell, Input, Select, Progress } from '@/components/ui';
-import { FileText, Users, Search, Calendar, Eye, Download, FileType2, ChevronRight, Plus, AlertTriangle, Filter, Download as DownloadIcon } from 'lucide-react';
+import { FileText, Users, Search, Calendar, Eye, Download, FileType2, ChevronRight, Plus, AlertTriangle, Filter, Download as DownloadIcon, X, FileCheck, CheckCircle2 } from 'lucide-react';
 import { useMonitorStore } from '@/store/useMonitorStore';
-import type { ReportType } from '@/types';
+import type { ReportType, MonitorReport } from '@/types';
+import dayjs from 'dayjs';
 
 const reportTypeConfig: Record<ReportType, { label: string }> = {
   daily: { label: '日报' },
@@ -32,6 +33,8 @@ export default function Reports() {
   const [queryMinValue, setQueryMinValue] = useState('');
   const [queryMaxValue, setQueryMaxValue] = useState('');
   const [hasQueried, setHasQueried] = useState(false);
+  const [isGeneratingCustom, setIsGeneratingCustom] = useState(false);
+  const [previewReport, setPreviewReport] = useState<MonitorReport | null>(null);
 
   const handleGenerateReport = () => {
     if (!startDate || !endDate) return;
@@ -130,6 +133,60 @@ export default function Reports() {
   const activeDataTypeInfo = dataTypeConfig[activeDataType as keyof typeof dataTypeConfig];
   const minValueLabel = queryDataType === 'all' ? '最小值 (nSv/h)' : `${activeDataTypeInfo?.minLabel} 最小值 (${activeDataTypeInfo?.unit})`;
   const maxValueLabel = queryDataType === 'all' ? '最大值 (nSv/h)' : `${activeDataTypeInfo?.minLabel} 最大值 (${activeDataTypeInfo?.unit})`;
+
+  const handleGenerateFromQuery = () => {
+    if (queryResults.length === 0) return;
+    setIsGeneratingCustom(true);
+    setTimeout(() => {
+      const doseRateValues = queryResults.map(r => r.doseRate);
+      const abnormalRecords = queryResults
+        .filter(r => r.isAbnormal || r.alertLevel !== 'normal')
+        .map(r => ({
+          id: r.id,
+          time: r.timestamp,
+          pointName: r.pointName,
+          value: r.doseRate,
+          unit: r.unit,
+          level: r.alertLevel,
+        }))
+        .slice(0, 20);
+      const dataTypeLabelText = queryDataType === 'all' ? '综合数据' : (activeDataTypeInfo?.label || '数据');
+      const pointLabel = queryPoint === 'all' ? '全部监测点' : (monitoringPoints.find(p => p.id === queryPoint)?.name || '');
+      const newReport: MonitorReport = {
+        id: `r${Date.now()}`,
+        type: 'custom',
+        title: `${pointLabel} ${dataTypeLabelText}监测报告-${queryStartDate || queryEndDate || dayjs().format('YYYY-MM-DD')}`,
+        startDate: queryStartDate ? new Date(queryStartDate).toISOString().slice(0, 10) : dayjs(queryResults[0].timestamp).format('YYYY-MM-DD'),
+        endDate: queryEndDate ? new Date(queryEndDate).toISOString().slice(0, 10) : dayjs(queryResults[queryResults.length - 1].timestamp).format('YYYY-MM-DD'),
+        generateTime: new Date().toISOString().replace('T', ' ').slice(0, 19),
+        generatedBy: '当前用户',
+        summary: {
+          totalReadings: queryResults.length,
+          abnormalCount: abnormalRecords.length,
+          avgDoseRate: Number((doseRateValues.reduce((s, v) => s + v, 0) / doseRateValues.length).toFixed(2)),
+          maxDoseRate: Number(Math.max(...doseRateValues).toFixed(2)),
+          minDoseRate: Number(Math.min(...doseRateValues).toFixed(2)),
+          pointsOnline: monitoringPoints.filter(p => p.status === 'online').length,
+          pointsTotal: monitoringPoints.length,
+          avgTemperature: Number((queryResults.reduce((s, r) => s + r.temperature, 0) / queryResults.length).toFixed(1)),
+          avgHumidity: Number((queryResults.reduce((s, r) => s + r.humidity, 0) / queryResults.length).toFixed(1)),
+          avgAccumulatedDose: Number((queryResults.reduce((s, r) => s + r.accumulatedDose, 0) / queryResults.length).toFixed(4)),
+        },
+        status: 'draft',
+        filters: {
+          pointId: queryPoint === 'all' ? undefined : queryPoint,
+          dataType: queryDataType,
+          minValue: queryMinValue ? parseFloat(queryMinValue) : undefined,
+          maxValue: queryMaxValue ? parseFloat(queryMaxValue) : undefined,
+        },
+        abnormalRecords,
+      };
+      addReport(newReport);
+      setPreviewReport(newReport);
+      setActiveTab('monitor');
+      setIsGeneratingCustom(false);
+    }, 1500);
+  };
 
   return (
     <div className="space-y-6">
@@ -244,7 +301,7 @@ export default function Reports() {
                         </TableCell>
                         <TableCell>
                           <div className="flex gap-1">
-                            <Button size="sm" variant="ghost">
+                            <Button size="sm" variant="ghost" onClick={() => setPreviewReport(report)}>
                               <Eye className="w-4 h-4" />
                               预览
                             </Button>
@@ -451,10 +508,29 @@ export default function Reports() {
                     查询结果
                     <Badge variant="default" className="ml-2">共 {queryResults.length} 条</Badge>
                   </CardTitle>
-                  <Button variant="secondary" size="sm">
-                    <DownloadIcon className="w-4 h-4" />
-                    导出 Excel
-                  </Button>
+                  <div className="flex gap-2">
+                    <Button variant="secondary" size="sm">
+                      <DownloadIcon className="w-4 h-4" />
+                      导出 Excel
+                    </Button>
+                    <Button
+                      size="sm"
+                      disabled={queryResults.length === 0 || isGeneratingCustom}
+                      onClick={handleGenerateFromQuery}
+                    >
+                      {isGeneratingCustom ? (
+                        <>
+                          <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                          生成中...
+                        </>
+                      ) : (
+                        <>
+                          <FileCheck className="w-4 h-4" />
+                          生成监测报告
+                        </>
+                      )}
+                    </Button>
+                  </div>
                 </CardHeader>
                 <CardContent>
                   {queryResults.length > 0 ? (
@@ -531,6 +607,185 @@ export default function Reports() {
           </div>
         </TabsContent>
       </Tabs>
+
+      {previewReport && (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
+          <div className="bg-gray-900 border border-gray-700 rounded-xl w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
+            <div className="flex items-center justify-between p-5 border-b border-gray-700">
+              <div className="flex items-center gap-3">
+                <FileText className="w-6 h-6 text-cyan-400" />
+                <h2 className="text-xl font-bold text-white">{previewReport.title}</h2>
+                <Badge variant={previewReport.status === 'final' ? 'success' : 'default'}>
+                  {previewReport.status === 'final' ? '已归档' : '草稿'}
+                </Badge>
+              </div>
+              <Button variant="ghost" size="sm" onClick={() => setPreviewReport(null)}>
+                <X className="w-5 h-5" />
+              </Button>
+            </div>
+            <div className="overflow-y-auto flex-1 p-6 space-y-6 text-[var(--color-text-primary)]">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base">报告基本信息</CardTitle>
+                </CardHeader>
+                <CardContent className="grid grid-cols-2 gap-4 text-sm">
+                  <div>
+                    <p className="text-[var(--color-text-muted)]">报告类型</p>
+                    <p className="font-medium">{reportTypeConfig[previewReport.type].label}</p>
+                  </div>
+                  <div>
+                    <p className="text-[var(--color-text-muted)]">生成时间</p>
+                    <p className="font-medium">{previewReport.generateTime}</p>
+                  </div>
+                  <div>
+                    <p className="text-[var(--color-text-muted)]">数据范围</p>
+                    <p className="font-medium">{previewReport.startDate} ~ {previewReport.endDate}</p>
+                  </div>
+                  <div>
+                    <p className="text-[var(--color-text-muted)]">生成人</p>
+                    <p className="font-medium">{previewReport.generatedBy}</p>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {previewReport.filters && (previewReport.filters.pointId || previewReport.filters.dataType) && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-base">筛选条件</CardTitle>
+                  </CardHeader>
+                  <CardContent className="grid grid-cols-2 gap-4 text-sm">
+                    {previewReport.filters.pointId && (
+                      <div>
+                        <p className="text-[var(--color-text-muted)]">监测点</p>
+                        <p className="font-medium">{monitoringPoints.find(p => p.id === previewReport.filters?.pointId)?.name || previewReport.filters.pointId}</p>
+                      </div>
+                    )}
+                    {previewReport.filters.dataType && (
+                      <div>
+                        <p className="text-[var(--color-text-muted)]">数据类型</p>
+                        <p className="font-medium">
+                          {previewReport.filters.dataType === 'all' ? '全部' : (dataTypeConfig[previewReport.filters.dataType as Exclude<DataTypeKey, 'all'>]?.label || previewReport.filters.dataType)}
+                        </p>
+                      </div>
+                    )}
+                    {previewReport.filters.minValue !== undefined && (
+                      <div>
+                        <p className="text-[var(--color-text-muted)]">最小值</p>
+                        <p className="font-medium font-mono">{previewReport.filters.minValue}</p>
+                      </div>
+                    )}
+                    {previewReport.filters.maxValue !== undefined && (
+                      <div>
+                        <p className="text-[var(--color-text-muted)]">最大值</p>
+                        <p className="font-medium font-mono">{previewReport.filters.maxValue}</p>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              )}
+
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base">统计摘要</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4 mb-4">
+                    <div className="bg-gray-900/50 rounded-lg p-3">
+                      <p className="text-xs text-[var(--color-text-muted)]">读取总数</p>
+                      <p className="text-2xl font-bold font-mono text-cyan-400">{previewReport.summary.totalReadings.toLocaleString()}</p>
+                    </div>
+                    <div className="bg-gray-900/50 rounded-lg p-3">
+                      <p className="text-xs text-[var(--color-text-muted)]">异常记录</p>
+                      <p className={`text-2xl font-bold font-mono ${previewReport.summary.abnormalCount > 0 ? 'text-red-400' : 'text-green-400'}`}>{previewReport.summary.abnormalCount}</p>
+                    </div>
+                    <div className="bg-gray-900/50 rounded-lg p-3">
+                      <p className="text-xs text-[var(--color-text-muted)]">平均剂量率</p>
+                      <p className="text-2xl font-bold font-mono text-white">{previewReport.summary.avgDoseRate} <span className="text-sm font-normal text-[var(--color-text-muted)]">nSv/h</span></p>
+                    </div>
+                    <div className="bg-gray-900/50 rounded-lg p-3">
+                      <p className="text-xs text-[var(--color-text-muted)]">最高剂量率</p>
+                      <p className="text-2xl font-bold font-mono text-orange-400">{previewReport.summary.maxDoseRate} <span className="text-sm font-normal text-[var(--color-text-muted)]">nSv/h</span></p>
+                    </div>
+                    {previewReport.summary.minDoseRate !== undefined && (
+                      <div className="bg-gray-900/50 rounded-lg p-3">
+                        <p className="text-xs text-[var(--color-text-muted)]">最低剂量率</p>
+                        <p className="text-2xl font-bold font-mono text-white">{previewReport.summary.minDoseRate} <span className="text-sm font-normal text-[var(--color-text-muted)]">nSv/h</span></p>
+                      </div>
+                    )}
+                    {previewReport.summary.avgTemperature !== undefined && (
+                      <div className="bg-gray-900/50 rounded-lg p-3">
+                        <p className="text-xs text-[var(--color-text-muted)]">平均温度</p>
+                        <p className="text-2xl font-bold font-mono text-white">{previewReport.summary.avgTemperature}°C</p>
+                      </div>
+                    )}
+                    {previewReport.summary.avgHumidity !== undefined && (
+                      <div className="bg-gray-900/50 rounded-lg p-3">
+                        <p className="text-xs text-[var(--color-text-muted)]">平均湿度</p>
+                        <p className="text-2xl font-bold font-mono text-white">{previewReport.summary.avgHumidity}%</p>
+                      </div>
+                    )}
+                    <div className="bg-gray-900/50 rounded-lg p-3">
+                      <p className="text-xs text-[var(--color-text-muted)]">在线/总监测点</p>
+                      <p className="text-2xl font-bold font-mono text-white">{previewReport.summary.pointsOnline}/{previewReport.summary.pointsTotal}</p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {previewReport.abnormalRecords && previewReport.abnormalRecords.length > 0 && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-base flex items-center gap-2">
+                      <AlertTriangle className="w-5 h-5 text-red-400" />
+                      异常记录 ({previewReport.abnormalRecords.length} 条)
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>时间</TableHead>
+                          <TableHead>监测点</TableHead>
+                          <TableHead>剂量率</TableHead>
+                          <TableHead>预警级别</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {previewReport.abnormalRecords.map(r => (
+                          <TableRow key={r.id}>
+                            <TableCell className="text-[var(--color-text-secondary)] text-sm">{dayjs(r.time).format('YYYY-MM-DD HH:mm:ss')}</TableCell>
+                            <TableCell className="font-medium">{r.pointName}</TableCell>
+                            <TableCell className="font-mono text-red-400">{r.value} {r.unit}</TableCell>
+                            <TableCell>
+                              <Badge variant={r.level === 'emergency' || r.level === 'severe' ? 'danger' : r.level === 'warning' ? 'warning' : 'primary'}>
+                                {r.level === 'notice' ? '提示' : r.level === 'warning' ? '警告' : r.level === 'severe' ? '严重' : r.level === 'emergency' ? '紧急' : r.level}
+                              </Badge>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </CardContent>
+                </Card>
+              )}
+
+              {previewReport.abnormalRecords && previewReport.abnormalRecords.length === 0 && (
+                <Card>
+                  <CardContent className="py-6 text-center text-[var(--color-text-secondary)]">
+                    <CheckCircle2 className="w-10 h-10 mx-auto mb-2 text-green-500" />
+                    <p>本时段内未发现异常数据</p>
+                  </CardContent>
+                </Card>
+              )}
+            </div>
+            <div className="flex items-center justify-end gap-2 p-5 border-t border-gray-700">
+              <Button variant="secondary" onClick={() => setPreviewReport(null)}>关闭</Button>
+              <Button variant="ghost"><Download className="w-4 h-4" />导出 PDF</Button>
+              <Button variant="ghost"><Download className="w-4 h-4" />导出 Word</Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
